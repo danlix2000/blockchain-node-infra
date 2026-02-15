@@ -1,0 +1,115 @@
+---
+# =============================================================================
+# Erigon Role - Default Variables
+# =============================================================================
+# Binary-based Erigon v3 deployment with built-in Caplin consensus client.
+# Override in inventory/group_vars/erigon/main.yml for environment-specific values.
+# =============================================================================
+
+# Version (git tag from https://github.com/erigontech/erigon/releases)
+erigon_version: "v3.3.7"
+go_version: "1.25.7"
+
+# Directories
+erigon_build_dir: /opt/erigon
+erigon_bin: "{{ erigon_build_dir }}/build/bin/erigon"
+erigon_data_dir: "{{ data_mount_point }}/erigon/datadir"
+erigon_config_dir: /etc/ethereum
+
+# JWT secret
+jwt_secret_path: "{{ erigon_config_dir }}/jwt.hex"
+
+# Network
+erigon_chain: mainnet
+erigon_prune_mode: ""          # Empty = Erigon native default (full). Set "archive" via node_archive group.
+erigon_commitment_history: false
+
+# External IP (set per-host or leave empty for auto-detection)
+external_ip: ""
+
+# Caplin (built-in consensus client)
+erigon_externalcl: false
+erigon_caplin_discovery_addr: "0.0.0.0"
+erigon_caplin_discovery_port: 4000
+erigon_caplin_discovery_tcp_port: 4001
+erigon_caplin_max_peers: 75
+
+# RPC
+erigon_http_enabled: true
+erigon_http_addr: "127.0.0.1"
+erigon_http_port: 8545
+erigon_http_api: "eth,debug,net,trace,web3,erigon,engine,txpool,ots"
+erigon_http_compression: true
+erigon_http_corsdomain: ""
+erigon_http_vhosts: ""
+erigon_ws_enabled: true
+erigon_ws_port: 8546
+erigon_ws_compression: true
+
+# RPC tuning
+erigon_rpc_batch_concurrency: 100
+erigon_rpc_batch_limit: 200
+erigon_rpc_gas_cap: 100000000
+erigon_trace_max_traces: 10000
+erigon_rpc_returndata_limit: 0
+erigon_rpc_allow_unprotected_txs: false
+erigon_rpc_txfeecap: ""
+erigon_rpc_slow: ""
+
+# P2P
+erigon_p2p_port: 30303
+erigon_max_peers: 0
+
+# Torrent
+erigon_torrent_download_rate: "2000mb"
+erigon_torrent_port: 42069
+
+# Engine API
+erigon_authrpc_port: 8551
+erigon_authrpc_addr: "0.0.0.0"
+erigon_authrpc_vhosts: "any"
+
+# gRPC
+erigon_grpc_port: 9090
+erigon_private_api_addr: ""
+
+# Database tuning
+erigon_batch_size: ""
+erigon_db_pagesize: ""
+
+# Data persistence
+erigon_persist_receipts: false
+erigon_downloader_verify: false
+
+# Metrics
+erigon_metrics_enabled: false
+erigon_metrics_port: 6060
+
+# Firewall (disabled by default - AWS uses Security Groups)
+# Enable for bare metal via group_vars/platform_latitude/main.yml
+erigon_firewall_enabled: false
+
+# Allowed IPs - full access (VPN egress, monitoring, admin)
+# Override in group_vars/erigon/main.yml with your VPN/office IPs
+erigon_firewall_allowed_ips: []
+# Example:
+#   - { ip: "203.0.113.10/32", comment: "VPN egress" }
+#   - { ip: "198.51.100.0/24", comment: "Office network" }
+
+# Firewall port definitions - public (open to all)
+erigon_firewall_public_ports:
+  - { port: 53, proto: "tcp", comment: "DNS" }
+  - { port: 53, proto: "udp", comment: "DNS" }
+  - { port: 30303, proto: "tcp", comment: "eth/68 P2P" }
+  - { port: 30303, proto: "udp", comment: "eth/68 P2P" }
+  - { port: 30304, proto: "tcp", comment: "eth/69 P2P" }
+  - { port: 30304, proto: "udp", comment: "eth/69 P2P" }
+  - { port: 42069, proto: "tcp", comment: "Torrent/snap sync" }
+  - { port: 42069, proto: "udp", comment: "Torrent/snap sync" }
+  - { port: 4000, proto: "udp", comment: "Caplin discovery" }
+  - { port: 4001, proto: "tcp", comment: "Caplin discovery" }
+
+# Systemd
+erigon_restart_sec: 60
+erigon_timeout_stop_sec: 120
+erigon_limit_nofile: 65536

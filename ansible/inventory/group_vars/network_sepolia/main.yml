@@ -1,0 +1,70 @@
+---
+# =============================================================================
+# Sepolia Network Configuration
+# =============================================================================
+# Applies to all hosts in the "network_sepolia" inventory group.
+# Overrides values from group_vars/ethereum/ and group_vars/erigon/.
+#
+# Ansible group precedence (alphabetical):
+#   network_sepolia > ethereum  (Docker nodes: Geth+Prysm, Reth+Lighthouse)
+#   network_sepolia > erigon    (Binary nodes: Erigon+Caplin)
+# =============================================================================
+
+ethereum_network: sepolia
+
+# --- Docker node overrides for Sepolia (Geth+Prysm, Reth+Lighthouse) ---
+
+# Checkpoint sync (overrides mainnet URL in group_vars/ethereum/main.yml)
+checkpoint_sync_url: "http://unstable.sepolia.beacon-api.nimbus.team"
+
+# --- Erigon overrides for Sepolia ---
+
+# Chain
+erigon_chain: sepolia
+
+# Data persistence (useful for Sepolia debugging/testing)
+erigon_persist_receipts: true
+
+# RPC tuning (lighter than mainnet)
+erigon_http_api: "eth,erigon,engine,trace,web3,net,debug,txpool"
+erigon_rpc_batch_concurrency: 50
+erigon_rpc_gas_cap: 0
+erigon_trace_max_traces: 500
+erigon_rpc_returndata_limit: 10000000
+erigon_rpc_allow_unprotected_txs: true
+erigon_rpc_txfeecap: "0"
+erigon_rpc_slow: "1m"
+
+# HTTP access (more permissive for testnet dev access)
+erigon_http_corsdomain: "*"
+erigon_http_vhosts: "*"
+
+# gRPC
+erigon_private_api_addr: "127.0.0.1:9090"
+
+# Sync tuning
+erigon_torrent_download_rate: "5000mb"
+erigon_downloader_verify: true
+erigon_batch_size: "512MB"
+erigon_db_pagesize: "4KB"
+
+# P2P
+erigon_max_peers: 100
+
+# UFW Firewall (Latitude bare metal only - ignored on AWS)
+# Same VPN IPs as mainnet. See group_vars/erigon/main.yml for details.
+erigon_firewall_allowed_ips:
+  - { ip: "203.0.113.10/32", comment: "VPN egress" }
+  # - { ip: "10.0.0.0/8", comment: "Internal network" }
+
+erigon_firewall_public_ports:
+  - { port: 53, proto: "tcp", comment: "DNS" }
+  - { port: 53, proto: "udp", comment: "DNS" }
+  - { port: 30303, proto: "tcp", comment: "eth/68 P2P" }
+  - { port: 30303, proto: "udp", comment: "eth/68 P2P" }
+  - { port: 30304, proto: "tcp", comment: "eth/69 P2P" }
+  - { port: 30304, proto: "udp", comment: "eth/69 P2P" }
+  - { port: 42069, proto: "tcp", comment: "Torrent/snap sync" }
+  - { port: 42069, proto: "udp", comment: "Torrent/snap sync" }
+  - { port: 4000, proto: "udp", comment: "Caplin discovery" }
+  - { port: 4001, proto: "tcp", comment: "Caplin discovery" }

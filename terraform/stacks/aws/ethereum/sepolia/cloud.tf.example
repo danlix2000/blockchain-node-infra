@@ -1,0 +1,28 @@
+# =============================================================================
+# HCP Terraform (Terraform Cloud) Backend Configuration
+# =============================================================================
+# Separate workspace per stack to isolate state.
+#
+# Setup:
+#   1. Create workspace "aws-ethereum-sepolia" in your TFC organization
+#   2. Set execution mode to "Local" in workspace settings
+#   3. Run: terraform init
+#
+# Authentication:
+#   export TF_TOKEN_app_terraform_io="your-api-token"
+#   # or: terraform login
+#
+# AWS Credentials (configure locally):
+#   Option A: aws configure
+#   Option B: export AWS_ACCESS_KEY_ID="..." && export AWS_SECRET_ACCESS_KEY="..."
+# =============================================================================
+
+terraform {
+  cloud {
+    organization = "your-organization"
+
+    workspaces {
+      name = "aws-ethereum-sepolia"
+    }
+  }
+}

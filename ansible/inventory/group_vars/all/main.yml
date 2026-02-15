@@ -1,0 +1,23 @@
+---
+# =============================================================================
+# Global Defaults
+# =============================================================================
+# Applies to all hosts. Group-specific overrides go in their respective
+# group_vars directories (erigon/, ethereum/, platform_latitude/, etc.).
+#
+# HAProxy secrets (API key, stats password) are per-role - create vault.yml
+# in group_vars/erigon/ and group_vars/ethereum/ (not here).
+# =============================================================================
+
+ansible_user: ubuntu
+
+data_mount_point: /data
+data_fs_type: ext4
+# --- HAProxy Deployment Config ---
+# Do NOT set haproxy_domain here. Each node gets its own domain from Terraform.
+# Flow: nodes.tfvars (domain field) -> Route 53 A record -> Ansible host variable.
+# Setting it here would force the same domain on every node, which is almost
+# never what you want. Leave this commented out.
+# haproxy_domain: ""
+# Set a real email before enabling HAProxy TLS (Let's Encrypt rejects example.com).
+haproxy_certbot_email: "admin@example.com"

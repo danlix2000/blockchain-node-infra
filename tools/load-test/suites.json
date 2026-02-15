@@ -1,0 +1,126 @@
+{
+    "suites": {
+        "full": {
+            "common": {
+                "duration": 45,
+                "metrics": [
+                    "success",
+                    "throughput",
+                    "p90",
+                    "p99"
+                ],
+                "vegeta_args": "-timeout 5s",
+                "deep_check": false
+            },
+            "tests": [
+                {
+                    "test": "eth_getBlockByNumber",
+                    "rates": [50, 100, 200, 400, 800]
+                },
+                {
+                    "test": "eth_call",
+                    "rates": [20, 50, 100, 200, 400]
+                },
+                {
+                    "test": "eth_getBalance",
+                    "rates": [50, 100, 200, 400, 800]
+                },
+                {
+                    "test": "eth_getTransactionReceipt",
+                    "rates": [25, 50, 100, 200, 400]
+                },
+                {
+                    "test": "eth_getTransactionByHash",
+                    "rates": [25, 50, 100, 200, 400]
+                },
+                {
+                    "test": "eth_getTransactionCount",
+                    "rates": [50, 100, 200, 400, 800]
+                },
+                {
+                    "test": "eth_feeHistory",
+                    "rates": [20, 50, 100, 200, 400]
+                },
+                {
+                    "test": "eth_getLogs",
+                    "rates": [5, 10, 25, 50, 100]
+                },
+                {
+                    "test": "eth_getCode",
+                    "rates": [50, 100, 200, 400, 800]
+                },
+                {
+                    "test": "eth_getStorageAt",
+                    "rates": [50, 100, 200, 400, 800]
+                }
+            ]
+        },
+        "archive": {
+            "common": {
+                "duration": 60,
+                "metrics": [
+                    "success",
+                    "throughput",
+                    "p90",
+                    "p99"
+                ],
+                "vegeta_args": "-timeout 15s",
+                "deep_check": true
+            },
+            "tests": [
+                {
+                    "test": "eth_getBlockByNumber",
+                    "rates": [50, 100, 200, 400]
+                },
+                {
+                    "test": "eth_getBalance",
+                    "rates": [25, 50, 100, 200]
+                },
+                {
+                    "test": "eth_getStorageAt",
+                    "rates": [25, 50, 100, 200]
+                },
+                {
+                    "test": "eth_call",
+                    "rates": [10, 25, 50, 100]
+                },
+                {
+                    "test": "eth_getLogs",
+                    "rates": [2, 5, 10, 25]
+                },
+                {
+                    "test": "trace_block",
+                    "rates": [1, 2, 5, 10]
+                },
+                {
+                    "test": "trace_transaction",
+                    "rates": [1, 2, 5, 10]
+                },
+                {
+                    "test": "trace_replayBlockTransactions",
+                    "rates": [1, 2, 5]
+                },
+                {
+                    "test": "trace_replayTransaction",
+                    "rates": [1, 2, 5, 10]
+                },
+                {
+                    "test": "trace_replayBlockTransactionsStateDiff",
+                    "rates": [1, 2, 5]
+                },
+                {
+                    "test": "trace_replayBlockTransactionsVmTrace",
+                    "rates": [1, 2, 5]
+                },
+                {
+                    "test": "trace_replayTransactionStateDiff",
+                    "rates": [1, 2, 5, 10]
+                },
+                {
+                    "test": "trace_replayTransactionVmTrace",
+                    "rates": [1, 2, 5, 10]
+                }
+            ]
+        }
+    }
+}

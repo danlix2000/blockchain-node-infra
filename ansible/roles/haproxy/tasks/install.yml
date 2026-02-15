@@ -1,0 +1,34 @@
+---
+# =============================================================================
+# HAProxy Role - Install Tasks
+# =============================================================================
+
+- name: Install HAProxy
+  ansible.builtin.apt:
+    name: haproxy
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install Certbot with Route 53 DNS plugin
+  ansible.builtin.apt:
+    name:
+      - certbot
+      - python3-certbot-dns-route53
+    state: present
+
+- name: Ensure HAProxy runtime directory exists
+  ansible.builtin.file:
+    path: /run/haproxy
+    state: directory
+    owner: haproxy
+    group: haproxy
+    mode: "0755"
+
+- name: Ensure HAProxy SSL directory exists
+  ansible.builtin.file:
+    path: "{{ haproxy_ssl_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"

@@ -1,0 +1,28 @@
+all:
+  children:
+    ethereum:
+      hosts:
+        ci-ethereum:
+          ansible_connection: local
+          ansible_host: 127.0.0.1
+          node_type: full
+          execution_client: geth
+          consensus_client: prysm
+          data_device: /dev/null
+    erigon:
+      hosts:
+        ci-erigon:
+          ansible_connection: local
+          ansible_host: 127.0.0.1
+          node_type: full
+          execution_client: erigon
+          consensus_client: caplin
+          data_device: /dev/null
+    network_mainnet:
+      hosts:
+        ci-ethereum: {}
+        ci-erigon: {}
+    platform_aws:
+      hosts:
+        ci-ethereum: {}
+        ci-erigon: {}

@@ -1,0 +1,62 @@
+---
+# -----------------------------------------------------------------------------
+# Ethereum Node Deployment Playbook
+# -----------------------------------------------------------------------------
+# Deploys and configures Ethereum nodes via Docker Compose.
+#
+# Node types (set via inventory):
+#   - full    -> Geth + Prysm
+#   - archive -> Reth + Lighthouse
+#
+# Usage:
+#   ansible-playbook -i inventory/ethereum_mainnet_aws_terraform_state.yml playbooks/ethereum.yml
+#
+# Tags:
+#   - common: System setup, Docker installation
+#   - ethereum: Ethereum node deployment
+#   - haproxy: HAProxy reverse proxy (TLS + API key auth)
+# -----------------------------------------------------------------------------
+
+- name: Configure Ethereum nodes
+  hosts: ethereum
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Display deployment info
+      ansible.builtin.debug:
+        msg: |
+          Deploying Ethereum {{ node_type | default('archive') }} node
+          - Host: {{ inventory_hostname }}
+          - Execution: {{ execution_client | default('reth') }}
+          - Consensus: {{ consensus_client | default('lighthouse') }}
+          - Data device: {{ data_device | default('Not set') }}
+          - Data mount: {{ data_mount_point | default('/data') }}
+
+  roles:
+    - role: common
+      tags: [common]
+
+    - role: ethereum
+      tags: [ethereum]
+
+    - role: haproxy
+      tags: [haproxy]
+      when: haproxy_enabled | default(false) | bool
+
+  post_tasks:
+    - name: Display completion message
+      ansible.builtin.debug:
+        msg: |
+          Ethereum {{ node_type | default('archive') }} node deployment complete!
+
+          Check status:
+            systemctl status ethereum
+            docker compose -f {{ docker_compose_dir }}/docker-compose.yml ps
+            docker compose -f {{ docker_compose_dir }}/docker-compose.yml logs -f
+
+          RPC endpoints (localhost only):
+            {{ execution_client | default('reth') | capitalize }} HTTP: http://127.0.0.1:8545
+            {{ execution_client | default('reth') | capitalize }} WS:   ws://127.0.0.1:8546
+            {{ consensus_client | default('lighthouse') | capitalize }}:
+              http://127.0.0.1:{{ '5052' if consensus_client | default('lighthouse') == 'lighthouse' else '3500' }}

@@ -1,0 +1,8 @@
+# =============================================================================
+# Mainnet Network Configuration
+# =============================================================================
+# Applies to all hosts in the "network_mainnet" inventory group.
+# Overrides values from group_vars/ethereum/ for mainnet-specific settings.
+# =============================================================================
+
+ethereum_network: mainnet

@@ -1,0 +1,158 @@
+# -----------------------------------------------------------------------------
+# Ethereum Nodes - Production (Mainnet) - Latitude.sh Bare Metal
+# -----------------------------------------------------------------------------
+# Single source of truth for all Mainnet nodes on Latitude.sh.
+# Copy to nodes.tfvars and customize for your deployment.
+#
+# Workflow:
+#   1. Order servers on Latitude.sh dashboard (select plan, site, OS - no RAID)
+#   2. Rename hostname in Latitude console to match naming convention
+#   3. Copy each server's ID (sv_xxx) from dashboard into latitude_id below
+#   4. terraform plan -var-file=nodes.tfvars   (verify import plan)
+#   5. terraform apply -var-file=nodes.tfvars  (import servers + create inventory)
+#
+# Deploying specific nodes (use -target):
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["full"]'
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["erigon-full"]'
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["erigon-arch"]'
+#
+# Configuring specific nodes (use --limit):
+#   ansible-playbook -i inventory/ethereum_mainnet_latitude_terraform_state.yml playbooks/ethereum.yml --limit node_full
+#   ansible-playbook -i inventory/ethereum_mainnet_latitude_terraform_state.yml playbooks/ethereum.yml --limit node_archive
+#   ansible-playbook -i inventory/ethereum_mainnet_latitude_terraform_state.yml playbooks/erigon.yml --limit node_full
+#   ansible-playbook -i inventory/ethereum_mainnet_latitude_terraform_state.yml playbooks/erigon.yml --limit node_archive
+#
+# Node naming: {site}-{chain}-{network}-{node_key}
+# Example: chi-ethereum-mainnet-full, chi-ethereum-mainnet-erigon-arch
+#
+# Deployment types:
+#   role = "ethereum" -> Docker-based (Ansible playbooks/ethereum.yml)
+#   role = "erigon"   -> Binary build (Ansible playbooks/erigon.yml)
+#
+# Client selection can be explicit per node, or inferred from node_type:
+#   - node_type = "full"    -> Geth + Prysm (defaults, Docker)
+#   - node_type = "archive" -> Reth + Lighthouse (defaults, Docker)
+#   - role = "erigon", node_type = "full"    -> Erigon full (binary, no Docker)
+#   - role = "erigon", node_type = "archive" -> Erigon archive (binary, no Docker)
+#
+# Latitude Plans:
+#   c2-small-x86      - Entry-level (testing)
+#   m4-metal-large     - 24 CPU, 384GB RAM, 10Gbps
+#   rs4-metal-large    - 64 CPU, 768GB RAM, 100Gbps (storage-optimized)
+#   rs4-metal-xlarge   - 96 CPU, 1536GB RAM, 200Gbps
+#   f4-metal-medium    - Compute-optimized
+#
+# Latitude Sites:
+#   CHI (Chicago), LAX2 (Los Angeles), TYO3/TYO4 (Tokyo)
+#   SAN3 (Santiago), SAO2 (Sao Paulo), SJC3 (San Jose)
+#
+# RAID is configured at order time on Latitude dashboard, NOT by Terraform.
+# The 'raid' field is optional - omit it to avoid triggering a server reinstall.
+# Only set it when ordering new servers via API (not for importing existing ones).
+#   raid-0  - Striped - best performance for blockchain data
+#   raid-1  - Mirrored - data safety, half capacity
+#   null    - No RAID (default, safe for imports)
+#
+# Data Device:
+#   /dev/md127    - RAID array created by Ansible (avoids conflict with Latitude md0/md1)
+#   /dev/nvme0n1  - First NVMe drive (no RAID)
+#   /dev/sda      - First SATA/SAS drive (no RAID)
+# -----------------------------------------------------------------------------
+
+nodes = {
+  # ---------------------------------------------------------------------------
+  # Full Node (Geth + Prysm) - Mainnet [Docker]
+  # ---------------------------------------------------------------------------
+  # Recommended for: RPC endpoints, general use
+  # Sync time: ~2 days with snap sync
+  #
+  # Playbook: ansible-playbook playbooks/ethereum.yml --limit node_full
+  # Upgrade:  Change client versions in group_vars/ethereum/main.yml, re-run playbook
+  #
+  full = {
+    role             = "ethereum"
+    node_type        = "full"
+    execution_client = "geth"
+    consensus_client = "prysm"
+
+    latitude_id    = "sv_xxxxxxxxxxxx" # Server ID from Latitude.sh dashboard
+    latitude_label = "XXXXXXXXXX"     # Server label/serial from dashboard
+    plan           = "rs4-metal-large" # 64 CPU, 768GB RAM, NVMe storage
+    site           = "CHI"             # Chicago
+    billing        = "hourly"
+    data_device    = "/dev/md127"        # RAID array device (RAID configured at order time)
+  }
+
+  # ---------------------------------------------------------------------------
+  # Archive Node (Reth + Lighthouse) - Mainnet [Docker]
+  # ---------------------------------------------------------------------------
+  # Recommended for: Historical queries, trace APIs, block explorers, L2 beacon
+  # Sync time: ~7-14 days
+  #
+  # Playbook: ansible-playbook playbooks/ethereum.yml --limit node_archive
+  # Upgrade:  Change client versions in group_vars/ethereum/main.yml, re-run playbook
+  #
+  # archive = {
+  #   role             = "ethereum"
+  #   node_type        = "archive"
+  #   execution_client = "reth"
+  #   consensus_client = "lighthouse"
+  #
+  #   latitude_id    = "sv_xxxxxxxxxxxx" # Server ID from Latitude.sh dashboard
+  #   latitude_label = "XXXXXXXXXX"     # Server label/serial from dashboard
+  #   plan           = "rs4-metal-xlarge" # 96 CPU, 1536GB RAM
+  #   site           = "CHI"
+  #   billing        = "hourly"
+  #   data_device    = "/dev/md127"        # RAID array device
+  # }
+
+  # ---------------------------------------------------------------------------
+  # Erigon Full Node - Mainnet [Binary Build]
+  # ---------------------------------------------------------------------------
+  # Erigon v3 full node - native default mode (no --prune.mode flag).
+  # Lower storage than archive. No --experimental.commitment-history.
+  # Recommended for: General RPC, lower storage requirements
+  # Sync time: ~2-3 days
+  #
+  # Playbook: ansible-playbook playbooks/erigon.yml --limit node_full
+  # Upgrade:  Change erigon_version in group_vars/erigon/main.yml, re-run playbook
+  #
+  # erigon-full = {
+  #   role             = "erigon"          # Uses erigon playbook (binary, not Docker)
+  #   node_type        = "full"            # Erigon default - no archive overrides applied
+  #   execution_client = "erigon"
+  #   consensus_client = "caplin"          # Built-in CL (no separate beacon node)
+  #
+  #   latitude_id    = "sv_xxxxxxxxxxxx"   # Server ID from Latitude.sh dashboard
+  #   latitude_label = "XXXXXXXXXX"        # Server label/serial from dashboard
+  #   plan           = "m4-metal-large"    # 24 CPU, 384GB RAM, 10Gbps
+  #   site           = "CHI"
+  #   billing        = "monthly"
+  #   data_device    = "/dev/md127"        # RAID array device
+  # }
+
+  # ---------------------------------------------------------------------------
+  # Erigon Archive Node - Mainnet [Binary Build]
+  # ---------------------------------------------------------------------------
+  # Erigon v3 archive node - --prune.mode=archive + --experimental.commitment-history
+  # applied automatically via group_vars/node_archive/ (node_type = "archive").
+  # Recommended for: Historical queries, trace APIs, high-performance RPC
+  # Sync time: ~7-14 days (uses BitTorrent for initial sync)
+  #
+  # Playbook: ansible-playbook playbooks/erigon.yml --limit node_archive
+  # Upgrade:  Change erigon_version in group_vars/erigon/main.yml, re-run playbook
+  #
+  # erigon-arch = {
+  #   role             = "erigon"          # Uses erigon playbook (binary, not Docker)
+  #   node_type        = "archive"         # Applies group_vars/node_archive/ overrides
+  #   execution_client = "erigon"
+  #   consensus_client = "caplin"          # Built-in CL (no separate beacon node)
+  #
+  #   latitude_id    = "sv_xxxxxxxxxxxx"   # Server ID from Latitude.sh dashboard
+  #   latitude_label = "XXXXXXXXXX"        # Server label/serial from dashboard
+  #   plan           = "rs4-metal-xlarge"  # 96 CPU, 1536GB RAM (recommended for archive)
+  #   site           = "CHI"
+  #   billing        = "monthly"
+  #   data_device    = "/dev/md127"        # RAID array device
+  # }
+}

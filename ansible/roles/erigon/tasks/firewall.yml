@@ -1,0 +1,49 @@
+---
+# =============================================================================
+# Erigon Firewall Tasks (UFW)
+# =============================================================================
+# Opens public P2P ports. Private ports (RPC, Engine API, gRPC) remain
+# localhost-only and are NOT opened in the firewall.
+# =============================================================================
+
+- name: Install UFW
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+
+- name: Set UFW default deny incoming
+  community.general.ufw:
+    direction: incoming
+    default: deny
+
+- name: Set UFW default allow outgoing
+  community.general.ufw:
+    direction: outgoing
+    default: allow
+
+- name: Allow SSH
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    comment: SSH
+
+- name: Allow all traffic from trusted IPs (VPN, monitoring)
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ item.ip }}"
+    comment: "{{ item.comment }}"
+  loop: "{{ erigon_firewall_allowed_ips }}"
+  when: erigon_firewall_allowed_ips | length > 0
+
+- name: Allow Erigon public ports
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port | string }}"
+    proto: "{{ item.proto }}"
+    comment: "Erigon {{ item.comment }}"
+  loop: "{{ erigon_firewall_public_ports }}"
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled

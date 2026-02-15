@@ -1,0 +1,215 @@
+---
+# =============================================================================
+# RAID-0 Setup Role
+# =============================================================================
+# Auto-discovers available data disks and creates a RAID-0 array.
+# Excludes the OS disk automatically.
+#
+# Usage:
+#   ansible-playbook playbooks/raid.yml --limit node_full
+#   ansible-playbook playbooks/raid.yml --limit node_archive
+#
+# After RAID setup, run the main playbook:
+#   ansible-playbook playbooks/ethereum.yml --limit node_full
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Prerequisites
+# ---------------------------------------------------------------------------
+
+- name: Install mdadm
+  ansible.builtin.apt:
+    name: mdadm
+    state: present
+    update_cache: true
+
+# ---------------------------------------------------------------------------
+# Check if RAID already exists
+# ---------------------------------------------------------------------------
+
+- name: Check if RAID device already exists
+  ansible.builtin.stat:
+    path: "{{ raid_device }}"
+  register: raid_device_stat
+
+- name: Check if RAID is already mounted
+  ansible.builtin.shell:
+    cmd: set -o pipefail && mount | grep "{{ raid_device }}"
+    executable: /bin/bash
+  register: raid_mounted
+  changed_when: false
+  failed_when: false
+
+- name: Skip RAID setup if already configured
+  ansible.builtin.debug:
+    msg: "RAID array {{ raid_device }} already exists and is mounted at {{ raid_mount_point }}. Skipping setup."
+  when: raid_mounted.rc == 0
+
+# ---------------------------------------------------------------------------
+# Discover available data disks
+# ---------------------------------------------------------------------------
+
+- name: Get OS disk devices
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      root_source=$(findmnt -n -o SOURCE /)
+      if echo "$root_source" | grep -q "^/dev/md"; then
+        # Root is on a RAID array - find parent disks of all member partitions
+        md_name=$(basename "$root_source")
+        ls /sys/block/${md_name}/slaves/ 2>/dev/null | while read slave; do
+          lsblk -ndo PKNAME "/dev/$slave" 2>/dev/null
+        done | sort -u | tr '\n' '|' | sed 's/|$//'
+      else
+        lsblk -ndo PKNAME "$root_source" 2>/dev/null | head -1
+      fi
+    executable: /bin/bash
+  register: os_disk_raw
+  changed_when: false
+  when: raid_mounted.rc != 0
+
+- name: Set OS disk fact
+  ansible.builtin.set_fact:
+    os_disk: "{{ os_disk_raw.stdout | trim }}"
+  when: raid_mounted.rc != 0
+
+- name: Find all available data disks
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      lsblk -dpno NAME,TYPE,MOUNTPOINT | \
+        awk '$2 == "disk" && $3 == "" { print $1 }' | \
+        grep -vE "{{ os_disk }}" | \
+        sort
+    executable: /bin/bash
+  register: available_disks
+  changed_when: false
+  when: raid_mounted.rc != 0
+
+- name: Display discovered disks
+  ansible.builtin.debug:
+    msg: |
+      OS disks: {{ os_disk }}
+      Available data disks ({{ available_disks.stdout_lines | length }}):
+      {{ available_disks.stdout_lines | join(', ') }}
+  when: raid_mounted.rc != 0
+
+- name: Fail if no data disks found
+  ansible.builtin.fail:
+    msg: "No available data disks found (excluding OS disk /dev/{{ os_disk }})"
+  when:
+    - raid_mounted.rc != 0
+    - available_disks.stdout_lines | length == 0
+
+# ---------------------------------------------------------------------------
+# Handle single disk (no RAID needed)
+# ---------------------------------------------------------------------------
+
+- name: Single disk - set data device directly
+  when:
+    - raid_mounted.rc != 0
+    - available_disks.stdout_lines | length == 1
+  block:
+    - name: Set single disk as data device
+      ansible.builtin.set_fact:
+        actual_data_device: "{{ available_disks.stdout_lines[0] }}"
+
+    - name: Display single disk info
+      ansible.builtin.debug:
+        msg: "Only 1 data disk found ({{ actual_data_device }}). Using directly without RAID."
+
+# ---------------------------------------------------------------------------
+# Create RAID-0 array (multiple disks)
+# ---------------------------------------------------------------------------
+
+- name: Create RAID-0 array
+  when:
+    - raid_mounted.rc != 0
+    - available_disks.stdout_lines | length > 1
+  block:
+    - name: Stop any existing RAID array on target device
+      ansible.builtin.command: "mdadm --stop {{ raid_device }}"
+      changed_when: true
+      failed_when: false
+
+    - name: Zero superblocks on all data disks
+      ansible.builtin.command: "mdadm --zero-superblock {{ item }}"
+      loop: "{{ available_disks.stdout_lines }}"
+      changed_when: true
+      failed_when: false
+
+    - name: Create RAID-0 array
+      ansible.builtin.command: >
+        mdadm --create {{ raid_device }}
+        --level={{ raid_level }}
+        --raid-devices={{ available_disks.stdout_lines | length }}
+        {{ available_disks.stdout_lines | join(' ') }}
+        --force
+      changed_when: true
+
+    - name: Wait for RAID array to become active
+      ansible.builtin.shell:
+        cmd: set -o pipefail && cat /proc/mdstat | grep -q "{{ raid_device | basename }}"
+        executable: /bin/bash
+      register: raid_active
+      changed_when: false
+      retries: 10
+      delay: 2
+      until: raid_active.rc == 0
+
+    - name: Save RAID configuration to mdadm.conf
+      ansible.builtin.shell: |
+        mdadm --detail --scan > /etc/mdadm/mdadm.conf
+      changed_when: true
+
+    - name: Update initramfs for RAID persistence
+      ansible.builtin.command: update-initramfs -u
+      changed_when: true
+
+    - name: Set RAID device as data device
+      ansible.builtin.set_fact:
+        actual_data_device: "{{ raid_device }}"
+
+    - name: Display RAID array info
+      ansible.builtin.command: "mdadm --detail {{ raid_device }}"
+      register: raid_detail
+      changed_when: false
+
+    - name: Show RAID details
+      ansible.builtin.debug:
+        msg: "{{ raid_detail.stdout }}"
+
+# ---------------------------------------------------------------------------
+# Format and mount
+# ---------------------------------------------------------------------------
+
+- name: Format and mount data device
+  when: raid_mounted.rc != 0
+  block:
+    - name: Create filesystem on data device
+      community.general.filesystem:
+        fstype: "{{ raid_fs_type }}"
+        dev: "{{ actual_data_device }}"
+
+    - name: Create mount point
+      ansible.builtin.file:
+        path: "{{ raid_mount_point }}"
+        state: directory
+        mode: "0755"
+
+    - name: Mount data device
+      ansible.posix.mount:
+        path: "{{ raid_mount_point }}"
+        src: "{{ actual_data_device }}"
+        fstype: "{{ raid_fs_type }}"
+        opts: "{{ raid_mount_opts }}"
+        state: mounted
+
+    - name: Display completion message
+      ansible.builtin.debug:
+        msg: |
+          RAID setup complete!
+          Device: {{ actual_data_device }}
+          Filesystem: {{ raid_fs_type }}
+          Mount: {{ raid_mount_point }}
+          Disks: {{ available_disks.stdout_lines | join(', ') }}

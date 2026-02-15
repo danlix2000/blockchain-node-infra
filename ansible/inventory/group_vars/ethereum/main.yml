@@ -1,0 +1,75 @@
+# =============================================================================
+# Ethereum Docker Node Configuration
+# =============================================================================
+# Applies to Docker-based nodes (role = "ethereum" in nodes.tfvars).
+# Covers Geth+Prysm and Reth+Lighthouse deployments.
+# Network-specific overrides go in group_vars/network_*/main.yml
+#
+# Secrets: Create vault.yml in this directory using ansible-vault create.
+# Required vault variables:
+#   vault_haproxy_api_key         - UUID4 API key (generate with: uuidgen)
+#   vault_haproxy_stats_password  - HAProxy stats page password
+# =============================================================================
+
+# Client versions (pinned for reproducible deployments)
+reth_version: "v1.9.4"
+lighthouse_version: "v8.0.0"
+geth_version: "v1.16.8"
+prysm_version: "v7.1.2"
+
+# Docker images
+docker_images:
+  reth: "ghcr.io/paradigmxyz/reth"
+  lighthouse: "sigp/lighthouse"
+  geth: "ethereum/client-go"
+  prysm: "gcr.io/offchainlabs/prysm/beacon-chain"
+
+# Checkpoint sync (optional)
+checkpoint_sync_url: "https://mainnet.checkpoint.sigp.io"
+
+# Geth sync mode
+geth_syncmode: full
+
+# RPC configuration
+rpc_http_enabled: true
+rpc_ws_enabled: true
+rpc_http_api: "eth,net,web3,txpool,debug,trace"
+rpc_ws_api: "eth,net,web3,txpool"
+
+# Directories
+ethereum_data_dir: "{{ data_mount_point }}"
+ethereum_config_dir: /etc/ethereum
+docker_compose_dir: "{{ ethereum_config_dir }}/docker"
+
+# JWT secret
+# Leave empty to auto-generate on first deployment
+jwt_secret: ""
+
+# P2P configuration
+external_ip: ""
+
+# Ports
+ports:
+  # Execution Layer
+  execution_p2p: 30303
+  execution_http: 8545
+  execution_ws: 8546
+  execution_authrpc: 8551
+  execution_metrics: 9002
+  # Consensus Layer
+  consensus_p2p_tcp: 9000
+  consensus_p2p_udp: 9000
+  consensus_quic: 9001
+  consensus_http: 5052
+  consensus_metrics: 5054
+
+# --- HAProxy ---
+# Backend ports map to Docker execution client ports.
+haproxy_enabled: true
+haproxy_backend_http_port: "{{ ports.execution_http }}"
+haproxy_backend_ws_port: "{{ ports.execution_ws }}"
+
+# HAProxy secrets (per-role isolation - each role group has its own API key).
+# Referenced from vault.yml (encrypted). Create with: ansible-vault create vault.yml
+haproxy_api_key: "{{ vault_haproxy_api_key | default('') }}"
+haproxy_stats_password: "{{ vault_haproxy_stats_password | default('') }}"

@@ -1,0 +1,59 @@
+---
+# =============================================================================
+# Erigon Configuration Tasks
+# =============================================================================
+# Sets up directories, JWT secret, and file permissions.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Directories
+# ---------------------------------------------------------------------------
+
+- name: Create Erigon config directory
+  ansible.builtin.file:
+    path: "{{ erigon_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create Erigon data directory
+  ansible.builtin.file:
+    path: "{{ erigon_data_dir }}"
+    state: directory
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: "0750"
+
+# ---------------------------------------------------------------------------
+# JWT Secret
+# ---------------------------------------------------------------------------
+
+- name: Check if JWT secret exists
+  ansible.builtin.stat:
+    path: "{{ jwt_secret_path }}"
+  register: jwt_file
+
+- name: Generate JWT secret
+  when: not jwt_file.stat.exists
+  block:
+    - name: Generate random JWT hex
+      ansible.builtin.command: openssl rand -hex 32
+      register: jwt_hex
+      changed_when: false
+
+    - name: Write JWT secret
+      ansible.builtin.copy:
+        content: "{{ jwt_hex.stdout }}"
+        dest: "{{ jwt_secret_path }}"
+        owner: "{{ service_user }}"
+        group: "{{ service_group }}"
+        mode: "0600"
+
+- name: Ensure JWT secret permissions
+  ansible.builtin.file:
+    path: "{{ jwt_secret_path }}"
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: "0600"
+  when: jwt_file.stat.exists

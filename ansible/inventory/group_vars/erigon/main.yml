@@ -1,0 +1,68 @@
+---
+# =============================================================================
+# Erigon Node Configuration
+# =============================================================================
+# Applies to Erigon nodes (role = "erigon" in nodes.tfvars).
+# Erigon v3 uses built-in Caplin consensus client (no separate CL needed).
+#
+# To upgrade: change erigon_version, re-run playbook.
+#
+# Secrets: Create vault.yml in this directory using ansible-vault create.
+# Required vault variables:
+#   vault_haproxy_api_key         - UUID4 API key (generate with: uuidgen)
+#   vault_haproxy_stats_password  - HAProxy stats page password
+# =============================================================================
+
+# Client versions (pinned for reproducible deployments)
+# Erigon: https://github.com/erigontech/erigon/releases
+erigon_version: "v3.3.7"
+go_version: "1.25.7"
+
+# Node configuration
+# Erigon defaults to full mode. Archive overrides (prune.mode, commitment-history)
+# are in group_vars/node_archive/main.yml, applied via the node_archive inventory group.
+erigon_chain: mainnet
+
+# Caplin (built-in consensus client)
+erigon_externalcl: false
+erigon_caplin_max_peers: 75
+
+# RPC configuration
+erigon_http_enabled: true
+erigon_http_addr: "127.0.0.1"
+erigon_http_api: "eth,debug,net,trace,web3,erigon,engine,txpool,ots"
+erigon_http_corsdomain: "*"
+erigon_http_vhosts: "*"
+erigon_ws_enabled: true
+
+# RPC tuning
+erigon_rpc_batch_concurrency: 100
+erigon_rpc_batch_limit: 200
+erigon_rpc_gas_cap: 100000000
+erigon_trace_max_traces: 10000
+
+# Torrent
+erigon_torrent_download_rate: "2000mb"
+
+# UFW Firewall (Latitude bare metal only)
+# AWS nodes use Security Groups instead (managed by Terraform).
+# UFW is enabled only on Latitude BM via group_vars/platform_latitude/main.yml
+# (erigon_firewall_enabled: true). On AWS this variable is ignored.
+#
+# Allowed IPs get full access to all ports including RPC (8545), Engine API (8551),
+# gRPC (9090). Public P2P ports are open to all regardless.
+erigon_firewall_allowed_ips:
+  - { ip: "203.0.113.10/32", comment: "VPN egress" }
+  # - { ip: "10.0.0.0/8", comment: "Internal network" }
+
+# --- HAProxy ---
+# Backend ports map to Erigon RPC ports (HTTP=8545, WS=8546).
+haproxy_enabled: true
+
+# HAProxy secrets (per-role isolation - each role group has its own API key).
+# Referenced from vault.yml (encrypted). Create with: ansible-vault create vault.yml
+haproxy_api_key: "{{ vault_haproxy_api_key | default('') }}"
+haproxy_stats_password: "{{ vault_haproxy_stats_password | default('') }}"
+haproxy_backend_http_port: "{{ erigon_http_port }}"
+haproxy_backend_ws_port: "{{ erigon_ws_port }}"
+haproxy_backend_ws_enabled: "{{ (erigon_ws_port | default(0) | int > 0) }}"

@@ -1,0 +1,24 @@
+---
+# =============================================================================
+# RAID Role - Defaults
+# =============================================================================
+
+# RAID array device name (use md127 to avoid conflicts with Latitude OS arrays md0/md1)
+raid_device: /dev/md127
+
+# RAID level (0 = striped for performance)
+raid_level: 0
+
+# Filesystem to create on the RAID array
+raid_fs_type: ext4
+
+# Mount point for the RAID array
+raid_mount_point: /data
+
+# Mount options
+raid_mount_opts: noatime,nodiratime
+
+# Skip disks matching these patterns (OS disk is auto-excluded)
+raid_exclude_patterns:
+  - "loop"
+  - "sr0"

@@ -1,0 +1,130 @@
+# =============================================================================
+# Ethereum Full Node - Geth + Prysm (Docker Compose)
+# =============================================================================
+# Standalone Docker Compose for running Geth (EL) + Prysm (CL).
+# Geth + Prysm is used as a full node (snap sync, pruned state).
+#
+# Usage:
+#   docker compose up -d
+#   docker compose logs -f
+#   docker compose down
+#
+# Prerequisites:
+#   - Generate JWT secret: openssl rand -hex 32 > jwt.hex
+#   - Copy .env.example to .env and set versions/paths
+#
+# Note: Production deployments use Ansible (ansible/roles/ethereum/).
+#       This file is a standalone reference for testing and quick setups.
+# =============================================================================
+
+services:
+  # ─── Geth - Execution Layer Client ─────────────────────────────────────────
+  geth:
+    image: ethereum/client-go:${GETH_VERSION:-stable}
+    container_name: geth
+    restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
+    stop_grace_period: 3m
+    ports:
+      - "30303:30303/tcp"     # P2P TCP
+      - "30303:30303/udp"     # P2P UDP
+      - "8545:8545"           # HTTP RPC
+      - "8546:8546"           # WebSocket RPC
+    expose:
+      - "8551"                # Engine API (internal)
+    volumes:
+      - ${DATA_DIR:-/data}/geth:/data
+      - ${DATA_DIR:-/data}/jwt.hex:/jwt.hex:ro
+    command:
+      - --datadir=/data
+      - --mainnet
+      # Full node: snap sync (downloads state snapshots, prunes old state)
+      - --syncmode=snap
+      # P2P
+      - --port=30303
+      # HTTP RPC
+      - --http
+      - --http.addr=0.0.0.0
+      - --http.port=8545
+      - --http.api=eth,net,web3,txpool,debug
+      - --http.corsdomain=*
+      - --http.vhosts=*
+      # WebSocket RPC
+      - --ws
+      - --ws.addr=0.0.0.0
+      - --ws.port=8546
+      - --ws.api=eth,net,web3,txpool
+      - --ws.origins=*
+      # Engine API (consensus client connection)
+      - --authrpc.addr=0.0.0.0
+      - --authrpc.port=8551
+      - --authrpc.vhosts=*
+      - --authrpc.jwtsecret=/jwt.hex
+      # Metrics
+      - --metrics
+      - --metrics.addr=0.0.0.0
+      - --metrics.port=6060
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8545 -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_syncing\",\"params\":[],\"id\":1}' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+    networks:
+      - ethereum
+
+  # ─── Prysm - Consensus Layer Client (Beacon Node) ─────────────────────────
+  prysm:
+    image: gcr.io/offchainlabs/prysm/beacon-chain:${PRYSM_VERSION:-stable}
+    container_name: prysm
+    restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
+    stop_grace_period: 3m
+    depends_on:
+      geth:
+        condition: service_started
+    ports:
+      - "13000:13000/tcp"     # P2P TCP
+      - "12000:12000/udp"     # P2P UDP
+      - "3500:3500"           # gRPC Gateway (Beacon HTTP API)
+    volumes:
+      - ${DATA_DIR:-/data}/prysm:/data
+      - ${DATA_DIR:-/data}/jwt.hex:/jwt.hex:ro
+    command:
+      - --datadir=/data
+      - --mainnet
+      # Execution client connection
+      - --execution-endpoint=http://geth:8551
+      - --jwt-secret=/jwt.hex
+      # P2P
+      - --p2p-tcp-port=13000
+      - --p2p-udp-port=12000
+      # gRPC Gateway (Beacon HTTP API)
+      - --grpc-gateway-host=0.0.0.0
+      - --grpc-gateway-port=3500
+      # Checkpoint sync (faster initial sync)
+      - --checkpoint-sync-url=https://beaconstate.ethstaker.cc
+      - --genesis-beacon-api-url=https://beaconstate.ethstaker.cc
+      # Accept terms of use (required by Prysm)
+      - --accept-terms-of-use
+      # Metrics
+      - --monitoring-host=0.0.0.0
+      - --monitoring-port=8080
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3500/eth/v1/node/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    logging: *logging
+    networks:
+      - ethereum
+
+networks:
+  ethereum:
+    driver: bridge

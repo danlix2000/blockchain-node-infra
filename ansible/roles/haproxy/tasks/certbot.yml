@@ -1,0 +1,97 @@
+---
+# =============================================================================
+# HAProxy Role - Certbot TLS Certificate Tasks
+# =============================================================================
+# Requests a Let's Encrypt certificate via DNS-01 challenge using Route 53.
+# - AWS EC2: Uses IAM instance profile (no credentials needed)
+# - Bare metal: Uses AWS credentials file deployed from vault
+#
+# Auto-renewal is handled by the certbot systemd timer (installed with certbot).
+# A deploy hook rebuilds the HAProxy PEM bundle and reloads the service.
+# =============================================================================
+
+# --- AWS credentials for bare metal (skip on EC2 with instance profile) ---
+
+- name: Create AWS credentials directory for Certbot
+  ansible.builtin.file:
+    path: /root/.aws
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when: haproxy_certbot_aws_access_key | default('') != ''
+
+- name: Deploy AWS credentials for Certbot (bare metal)
+  ansible.builtin.template:
+    src: aws-credentials.j2
+    dest: /root/.aws/credentials
+    owner: root
+    group: root
+    mode: "0600"
+  when: haproxy_certbot_aws_access_key | default('') != ''
+
+# --- Certificate request ---
+
+- name: Validate HAProxy domain is configured
+  ansible.builtin.assert:
+    that:
+      - haproxy_domain | default("") | trim != ""
+    fail_msg: "haproxy_domain is empty. Set node domain in Terraform nodes.tfvars."
+
+- name: Validate Certbot email is configured
+  ansible.builtin.assert:
+    that:
+      - haproxy_certbot_email | default("") | trim != ""
+      - haproxy_certbot_email is match("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
+      - not (haproxy_certbot_email | lower is search("@example\\.com$"))
+    fail_msg: "haproxy_certbot_email must be a real email address (not example.com placeholder)."
+
+- name: Check if Let's Encrypt certificate exists
+  ansible.builtin.stat:
+    path: "/etc/letsencrypt/live/{{ haproxy_domain }}/fullchain.pem"
+  register: _certbot_cert
+
+- name: Request Let's Encrypt certificate via Route 53 DNS-01
+  ansible.builtin.command:
+    cmd: >-
+      certbot certonly
+      --dns-route53
+      --non-interactive
+      --agree-tos
+      --email {{ haproxy_certbot_email }}
+      -d {{ haproxy_domain }}
+  when: not _certbot_cert.stat.exists
+  register: _certbot_result
+  changed_when: "'Successfully received certificate' in _certbot_result.stdout"
+
+# --- Build HAProxy PEM bundle (fullchain + privkey) ---
+# Let's Encrypt live dir contains symlinks - use shell to concatenate directly.
+# HAProxy requires cert chain before private key in the PEM bundle.
+
+- name: Build HAProxy PEM bundle from Let's Encrypt certs
+  ansible.builtin.shell: |
+    cat /etc/letsencrypt/live/{{ haproxy_domain }}/fullchain.pem \
+        /etc/letsencrypt/live/{{ haproxy_domain }}/privkey.pem \
+        > {{ haproxy_ssl_cert_path }}
+    chmod 600 {{ haproxy_ssl_cert_path }}
+  args:
+    creates: "{{ haproxy_ssl_cert_path }}"
+  notify: Reload haproxy
+
+# --- Renewal hook ---
+
+- name: Ensure Certbot renewal hooks directory exists
+  ansible.builtin.file:
+    path: /etc/letsencrypt/renewal-hooks/deploy
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy Certbot renewal hook for HAProxy
+  ansible.builtin.template:
+    src: certbot-renew-hook.sh.j2
+    dest: /etc/letsencrypt/renewal-hooks/deploy/haproxy-reload.sh
+    owner: root
+    group: root
+    mode: "0755"

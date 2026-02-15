@@ -1,0 +1,15 @@
+---
+# =============================================================================
+# HAProxy Role - Firewall Tasks (UFW)
+# =============================================================================
+# Adds UFW rules for HAProxy ports (80/443). Additive only - does not reset
+# UFW defaults or remove existing rules (e.g., from erigon firewall).
+# =============================================================================
+
+- name: Allow HAProxy public ports
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port | string }}"
+    proto: "{{ item.proto }}"
+    comment: "{{ item.comment }}"
+  loop: "{{ haproxy_firewall_ports }}"

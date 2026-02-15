@@ -1,0 +1,139 @@
+---
+# =============================================================================
+# Erigon Build Tasks
+# =============================================================================
+# Installs Go and builds Erigon from source. Uses a version marker file
+# to detect when a rebuild is needed (version change in group_vars).
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Build Dependencies
+# ---------------------------------------------------------------------------
+
+- name: Install build dependencies
+  ansible.builtin.apt:
+    name:
+      - git
+      - make
+      - gcc
+      - g++
+      - libc6-dev
+    state: present
+    update_cache: true
+
+# ---------------------------------------------------------------------------
+# Go Installation
+# ---------------------------------------------------------------------------
+
+- name: Check current Go version
+  ansible.builtin.command: /usr/local/go/bin/go version
+  register: go_current_version
+  changed_when: false
+  failed_when: false
+
+- name: Install Go {{ go_version }}
+  when: go_current_version.rc != 0 or ('go' + go_version) not in go_current_version.stdout
+  block:
+    - name: Download Go tarball
+      ansible.builtin.get_url:
+        url: "https://go.dev/dl/go{{ go_version }}.linux-amd64.tar.gz"
+        dest: /tmp/go{{ go_version }}.linux-amd64.tar.gz
+        mode: "0644"
+
+    - name: Remove existing Go installation
+      ansible.builtin.file:
+        path: /usr/local/go
+        state: absent
+
+    - name: Extract Go tarball
+      ansible.builtin.unarchive:
+        src: /tmp/go{{ go_version }}.linux-amd64.tar.gz
+        dest: /usr/local
+        remote_src: true
+
+    - name: Clean up Go tarball
+      ansible.builtin.file:
+        path: /tmp/go{{ go_version }}.linux-amd64.tar.gz
+        state: absent
+
+- name: Add Go to system PATH
+  ansible.builtin.copy:
+    content: 'export PATH=$PATH:/usr/local/go/bin'
+    dest: /etc/profile.d/go.sh
+    mode: "0644"
+
+# ---------------------------------------------------------------------------
+# Erigon Build
+# ---------------------------------------------------------------------------
+
+- name: Check installed Erigon version marker
+  ansible.builtin.slurp:
+    src: "{{ erigon_build_dir }}/.erigon_version"
+  register: erigon_version_marker
+  failed_when: false
+
+- name: Set current installed version
+  ansible.builtin.set_fact:
+    erigon_installed_version: "{{ (erigon_version_marker.content | b64decode | trim) if erigon_version_marker.content is defined else 'none' }}"
+
+- name: Check if Erigon binary exists
+  ansible.builtin.stat:
+    path: "{{ erigon_bin }}"
+  register: erigon_binary_check
+
+- name: Build Erigon {{ erigon_version }}
+  when: erigon_installed_version != erigon_version or not erigon_binary_check.stat.exists
+  block:
+    - name: Remove existing Erigon source
+      ansible.builtin.file:
+        path: "{{ erigon_build_dir }}"
+        state: absent
+
+    - name: Create build directory owned by service user
+      ansible.builtin.file:
+        path: "{{ erigon_build_dir }}"
+        state: directory
+        owner: "{{ service_user }}"
+        group: "{{ service_group }}"
+        mode: "0755"
+
+    - name: Clone Erigon repository
+      ansible.builtin.git:
+        repo: https://github.com/erigontech/erigon.git
+        dest: "{{ erigon_build_dir }}"
+        version: "{{ erigon_version }}"
+        depth: 1
+      become: true
+      become_user: "{{ service_user }}"
+
+    - name: Build Erigon binary
+      ansible.builtin.command: make erigon
+      args:
+        chdir: "{{ erigon_build_dir }}"
+      environment:
+        PATH: "/usr/local/go/bin:{{ ansible_env.PATH }}"
+        HOME: "{{ erigon_build_dir }}"
+        GOPATH: "{{ erigon_build_dir }}/.go"
+        GOCACHE: "{{ erigon_build_dir }}/.cache/go-build"
+      become: true
+      become_user: "{{ service_user }}"
+      changed_when: true
+
+    - name: Verify Erigon binary exists
+      ansible.builtin.stat:
+        path: "{{ erigon_bin }}"
+      register: erigon_binary
+      failed_when: not erigon_binary.stat.exists
+
+    - name: Write version marker
+      ansible.builtin.copy:
+        content: "{{ erigon_version }}"
+        dest: "{{ erigon_build_dir }}/.erigon_version"
+        owner: "{{ service_user }}"
+        group: "{{ service_group }}"
+        mode: "0644"
+      notify: Restart erigon
+
+    - name: Display build info
+      ansible.builtin.debug:
+        msg: "Erigon {{ erigon_version }} built at {{ erigon_bin }}"

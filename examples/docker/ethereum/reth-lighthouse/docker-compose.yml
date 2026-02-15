@@ -1,0 +1,258 @@
+# =============================================================================
+# Ethereum Node - Reth + Lighthouse (Docker Compose)
+# =============================================================================
+# Standalone Docker Compose for running Reth (EL) + Lighthouse (CL).
+# Use Docker Compose profiles to select node type:
+#
+#   Full node (pruned):
+#     docker compose --profile full up -d
+#
+#   Archive node (all historical state):
+#     docker compose --profile archive up -d
+#
+# Prerequisites:
+#   - Generate JWT secret: openssl rand -hex 32 > jwt.hex
+#   - Copy .env.example to .env and set versions/paths
+#
+# Note: Production deployments use Ansible (ansible/roles/ethereum/).
+#       This file is a standalone reference for testing and quick setups.
+# =============================================================================
+
+services:
+  # ─── Full Node ─────────────────────────────────────────────────────────────
+  # Reth --full enables pruning (discards old receipts/history)
+  # Lighthouse runs as standard beacon node
+  reth-full:
+    profiles: ["full"]
+    image: ghcr.io/paradigmxyz/reth:${RETH_VERSION:-latest}
+    container_name: reth
+    restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
+    stop_grace_period: 3m
+    ports:
+      - "30303:30303/tcp"     # P2P TCP
+      - "30303:30303/udp"     # P2P UDP
+      - "8545:8545"           # HTTP RPC
+      - "8546:8546"           # WebSocket RPC
+    expose:
+      - "8551"                # Engine API (internal)
+    volumes:
+      - ${DATA_DIR:-/data}/reth:/data
+      - ${DATA_DIR:-/data}/jwt.hex:/jwt.hex:ro
+    command:
+      - node
+      - --datadir=/data
+      - --chain=mainnet
+      # Full mode: --full enables pruning (prunes old receipts/history)
+      - --full
+      # P2P
+      - --port=30303
+      - --nat=extip:${EXTERNAL_IP:-auto}
+      # HTTP RPC
+      - --http
+      - --http.addr=0.0.0.0
+      - --http.port=8545
+      - --http.api=eth,net,web3,txpool,debug,trace
+      - --http.corsdomain=*
+      # WebSocket RPC
+      - --ws
+      - --ws.addr=0.0.0.0
+      - --ws.port=8546
+      - --ws.api=eth,net,web3,txpool
+      # Engine API (consensus client connection)
+      - --authrpc.addr=0.0.0.0
+      - --authrpc.port=8551
+      - --authrpc.jwtsecret=/jwt.hex
+      # Metrics
+      - --metrics=0.0.0.0:9002
+      - --log.file.directory=/data/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8545 -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_syncing\",\"params\":[],\"id\":1}' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+    networks:
+      - ethereum
+
+  lighthouse-full:
+    profiles: ["full"]
+    image: sigp/lighthouse:${LIGHTHOUSE_VERSION:-latest}
+    container_name: lighthouse
+    restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
+    stop_grace_period: 3m
+    depends_on:
+      reth-full:
+        condition: service_started
+    ports:
+      - "9000:9000/tcp"       # P2P TCP
+      - "9000:9000/udp"       # P2P UDP
+      - "9001:9001/udp"       # QUIC
+      - "5052:5052"           # Beacon HTTP API
+    volumes:
+      - ${DATA_DIR:-/data}/lighthouse:/data
+      - ${DATA_DIR:-/data}/jwt.hex:/jwt.hex:ro
+    command:
+      - lighthouse
+      - bn
+      - --network=mainnet
+      - --datadir=/data
+      # Execution client connection
+      - --execution-endpoint=http://reth:8551
+      - --execution-jwt=/jwt.hex
+      # P2P
+      - --port=9000
+      - --quic-port=9001
+      - --enr-udp-port=9000
+      - --enr-tcp-port=9000
+      # Beacon HTTP API
+      - --http
+      - --http-address=0.0.0.0
+      - --http-port=5052
+      - --http-allow-origin=*
+      # Metrics
+      - --metrics
+      - --metrics-address=0.0.0.0
+      - --metrics-port=5054
+      # Checkpoint sync (mainnet - sigp endpoint is stable)
+      - --checkpoint-sync-url=https://mainnet.checkpoint.sigp.io
+      - --checkpoint-sync-url-timeout=300
+      - --target-peers=100
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5052/eth/v1/node/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    logging: *logging
+    networks:
+      - ethereum
+
+  # ─── Archive Node ──────────────────────────────────────────────────────────
+  # Reth: NO --full flag = archive mode (stores all historical state)
+  # Lighthouse: archive flags for full historical state + blob serving
+  reth-archive:
+    profiles: ["archive"]
+    image: ghcr.io/paradigmxyz/reth:${RETH_VERSION:-latest}
+    container_name: reth
+    restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
+    stop_grace_period: 3m
+    ports:
+      - "30303:30303/tcp"
+      - "30303:30303/udp"
+      - "8545:8545"
+      - "8546:8546"
+    expose:
+      - "8551"
+    volumes:
+      - ${DATA_DIR:-/data}/reth:/data
+      - ${DATA_DIR:-/data}/jwt.hex:/jwt.hex:ro
+    command:
+      - node
+      - --datadir=/data
+      - --chain=mainnet
+      # Archive mode: NO --full flag = keeps all historical state (no pruning)
+      # P2P
+      - --port=30303
+      - --nat=extip:${EXTERNAL_IP:-auto}
+      # HTTP RPC
+      - --http
+      - --http.addr=0.0.0.0
+      - --http.port=8545
+      - --http.api=eth,net,web3,txpool,debug,trace
+      - --http.corsdomain=*
+      # WebSocket RPC
+      - --ws
+      - --ws.addr=0.0.0.0
+      - --ws.port=8546
+      - --ws.api=eth,net,web3,txpool
+      # Engine API
+      - --authrpc.addr=0.0.0.0
+      - --authrpc.port=8551
+      - --authrpc.jwtsecret=/jwt.hex
+      # Metrics
+      - --metrics=0.0.0.0:9002
+      - --log.file.directory=/data/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8545 -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_syncing\",\"params\":[],\"id\":1}' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging: *logging
+    networks:
+      - ethereum
+
+  lighthouse-archive:
+    profiles: ["archive"]
+    image: sigp/lighthouse:${LIGHTHOUSE_VERSION:-latest}
+    container_name: lighthouse
+    restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
+    stop_grace_period: 3m
+    depends_on:
+      reth-archive:
+        condition: service_started
+    ports:
+      - "9000:9000/tcp"
+      - "9000:9000/udp"
+      - "9001:9001/udp"
+      - "5052:5052"           # Beacon HTTP API (L2 beacon endpoint)
+    volumes:
+      - ${DATA_DIR:-/data}/lighthouse:/data
+      - ${DATA_DIR:-/data}/jwt.hex:/jwt.hex:ro
+    command:
+      - lighthouse
+      - bn
+      - --network=mainnet
+      - --datadir=/data
+      # Archive: reconstruct all historical states
+      - --reconstruct-historic-states
+      - --genesis-backfill
+      - --complete-blob-backfill
+      - --disable-backfill-rate-limiting
+      # Keep all blobs and payloads (required for L2 beacon endpoint)
+      - --prune-blobs=false
+      - --prune-payloads=false
+      - --supernode
+      # Execution client connection
+      - --execution-endpoint=http://reth:8551
+      - --execution-jwt=/jwt.hex
+      # P2P
+      - --port=9000
+      - --quic-port=9001
+      - --enr-udp-port=9000
+      - --enr-tcp-port=9000
+      # Beacon HTTP API (serves blob_sidecars for L2 chains)
+      - --http
+      - --http-address=0.0.0.0
+      - --http-port=5052
+      - --http-allow-origin=*
+      # Metrics
+      - --metrics
+      - --metrics-address=0.0.0.0
+      - --metrics-port=5054
+      # Checkpoint sync
+      - --checkpoint-sync-url=https://mainnet.checkpoint.sigp.io
+      - --checkpoint-sync-url-timeout=300
+      - --target-peers=100
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5052/eth/v1/node/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    logging: *logging
+    networks:
+      - ethereum
+
+networks:
+  ethereum:
+    driver: bridge

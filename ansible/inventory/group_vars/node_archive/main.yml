@@ -1,0 +1,20 @@
+---
+# =============================================================================
+# Archive Node Configuration
+# =============================================================================
+# Applies to all hosts in the "node_archive" inventory group.
+# Overrides base erigon config for archive-specific settings.
+#
+# Ansible group precedence: node_archive > network_* > erigon (alphabetical),
+# so these values override both base Erigon config and network-specific config.
+#
+# Nodes get the node_archive group when:
+#   - Terraform: node_type = "archive" in nodes.tfvars
+#   - Static inventory: host listed under node_archive group
+# =============================================================================
+
+# Archive mode: retain full historical state
+erigon_prune_mode: archive
+
+# Commitment history: required for archive nodes to serve historical state queries
+erigon_commitment_history: true

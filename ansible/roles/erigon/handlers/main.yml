@@ -1,0 +1,6 @@
+---
+- name: Restart erigon
+  ansible.builtin.systemd:
+    name: erigon
+    state: restarted
+    daemon_reload: true

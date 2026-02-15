@@ -1,0 +1,8 @@
+# Python dependencies for blockchain node deployment
+# Install: pip install -r requirements.txt
+
+# Ansible package versioning:
+#   ansible 10.x = ansible-core 2.17.x
+#   ansible 9.x  = ansible-core 2.16.x
+#   ansible 8.x  = ansible-core 2.15.x
+ansible>=9.0,<11.0

@@ -1,0 +1,122 @@
+# {{ ansible_managed }}
+# =============================================================================
+# Ethereum Node - Reth + Lighthouse ({{ node_type | capitalize }})
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Reth - Execution Layer Client
+  # ---------------------------------------------------------------------------
+  reth:
+    image: {{ docker_images.reth }}:${RETH_VERSION}
+    container_name: reth
+    restart: unless-stopped
+    user: "${UID}:${GID}"
+    network_mode: host
+    stop_grace_period: 3m
+    volumes:
+      - {{ ethereum_data_dir }}/reth:/data
+      - {{ ethereum_config_dir }}/jwt.hex:/jwt.hex:ro
+    command:
+      - node
+      - --datadir=/data
+      - --chain={{ ethereum_network }}
+{% if node_type == 'full' %}
+      - --full
+{% endif %}
+      - --port={{ ports.execution_p2p }}
+{% if external_ip | default('') != '' %}
+      - --nat=extip:{{ external_ip }}
+{% endif %}
+{% if rpc_http_enabled | default(true) %}
+      - --http
+      - --http.addr=127.0.0.1
+      - --http.port={{ ports.execution_http }}
+      - --http.api={{ rpc_http_api }}
+      - --http.corsdomain=*
+      - --http.vhosts=*
+{% endif %}
+{% if rpc_ws_enabled | default(true) %}
+      - --ws
+      - --ws.addr=127.0.0.1
+      - --ws.port={{ ports.execution_ws }}
+      - --ws.api={{ rpc_ws_api }}
+{% endif %}
+      - --authrpc.addr=127.0.0.1
+      - --authrpc.port={{ ports.execution_authrpc }}
+      - --authrpc.jwtsecret=/jwt.hex
+      - --metrics=127.0.0.1:{{ ports.execution_metrics }}
+      - --log.file.directory=/data/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:{{ ports.execution_http }} -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_syncing\",\"params\":[],\"id\":1}' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  # ---------------------------------------------------------------------------
+  # Lighthouse - Consensus Layer Client (Beacon Node)
+  # ---------------------------------------------------------------------------
+  lighthouse:
+    image: {{ docker_images.lighthouse }}:${LIGHTHOUSE_VERSION}
+    container_name: lighthouse
+    restart: unless-stopped
+    user: "${UID}:${GID}"
+    network_mode: host
+    stop_grace_period: 3m
+    depends_on:
+      reth:
+        condition: service_started
+    volumes:
+      - {{ ethereum_data_dir }}/lighthouse:/data
+      - {{ ethereum_config_dir }}/jwt.hex:/jwt.hex:ro
+    command:
+      - lighthouse
+      - bn
+      - --network={{ ethereum_network }}
+      - --datadir=/data
+{% if node_type == 'archive' %}
+      - --reconstruct-historic-states
+      - --genesis-backfill
+      - --complete-blob-backfill
+      - --disable-backfill-rate-limiting
+      - --prune-blobs=false
+      - --prune-payloads=false
+      - --supernode
+{% endif %}
+      - --execution-endpoint=http://127.0.0.1:{{ ports.execution_authrpc }}
+      - --execution-jwt=/jwt.hex
+      - --port={{ ports.consensus_p2p_tcp }}
+      - --quic-port={{ ports.consensus_quic }}
+      - --enr-udp-port={{ ports.consensus_p2p_udp }}
+      - --enr-tcp-port={{ ports.consensus_p2p_tcp }}
+{% if rpc_http_enabled | default(true) %}
+      - --http
+      - --http-address=127.0.0.1
+      - --http-port={{ ports.consensus_http }}
+      - --http-allow-origin=*
+{% endif %}
+      - --metrics
+      - --metrics-address=127.0.0.1
+      - --metrics-port={{ ports.consensus_metrics }}
+{% if checkpoint_sync_url | default('') != '' %}
+      - --checkpoint-sync-url={{ checkpoint_sync_url }}
+      - --checkpoint-sync-url-timeout={{ checkpoint_sync_url_timeout | default(300) }}
+{% endif %}
+      - --target-peers=100
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:{{ ports.consensus_http }}/eth/v1/node/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"

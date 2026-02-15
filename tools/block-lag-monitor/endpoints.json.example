@@ -1,0 +1,25 @@
+{
+    "eth-mainnet": {
+        "mainnet-archive-aws-1": "http://10.10.0.100:8545",
+        "mainnet-archive-aws-2": "http://10.10.0.101:8545",
+        "mainnet-full-latitude-1": "http://203.0.113.50:8545"
+    },
+    "eth-sepolia": {
+        "sepolia-archive-1": "http://10.20.0.100:8545",
+        "sepolia-full-1": "http://10.20.0.101:8545"
+    },
+    "eth-mainnet-public": {
+        "infura": "https://mainnet.infura.io/v3/YOUR_API_KEY",
+        "alchemy": "https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
+    },
+    "bnb-mainnet": {
+        "bnb-archive-1": "http://10.30.0.100:8545"
+    },
+    "avalanche-mainnet": {
+        "avax-node-1": "http://10.40.0.100:9650/ext/bc/C/rpc",
+        "avax-node-2": "http://10.40.0.101:9650/ext/bc/C/rpc"
+    },
+    "dexalot-mainnet": {
+        "dexalot-full-1": "http://10.50.0.100:9650/ext/bc/SUBNET_ID/rpc"
+    }
+}

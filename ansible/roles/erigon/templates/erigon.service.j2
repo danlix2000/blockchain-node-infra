@@ -1,0 +1,104 @@
+[Unit]
+Description=Erigon Ethereum Node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User={{ service_user }}
+Group={{ service_group }}
+Type=simple
+Restart=always
+RestartSec={{ erigon_restart_sec }}
+TimeoutStopSec={{ erigon_timeout_stop_sec }}
+LimitNOFILE={{ erigon_limit_nofile }}
+Environment=LD_LIBRARY_PATH={{ erigon_build_dir }}/build/bin
+
+ExecStart={{ erigon_bin }} \
+  --chain={{ erigon_chain }} \
+  --datadir={{ erigon_data_dir }} \
+{% if erigon_prune_mode | default('') != '' %}
+  --prune.mode={{ erigon_prune_mode }} \
+{% endif %}
+{% if erigon_commitment_history | default(false) %}
+  --experimental.commitment-history \
+{% endif %}
+{% if erigon_persist_receipts | default(false) %}
+  --persist.receipts \
+{% endif %}
+{% if erigon_externalcl %}
+  --externalcl \
+{% else %}
+  --caplin.discovery.addr={{ erigon_caplin_discovery_addr }} \
+  --caplin.discovery.port={{ erigon_caplin_discovery_port }} \
+  --caplin.discovery.tcpport={{ erigon_caplin_discovery_tcp_port }} \
+  --caplin.max-peer-count={{ erigon_caplin_max_peers }} \
+{% endif %}
+{% if erigon_max_peers | default(0) | int > 0 %}
+  --maxpeers={{ erigon_max_peers }} \
+{% endif %}
+{% if erigon_http_enabled %}
+  --http \
+  --http.addr={{ erigon_http_addr }} \
+  --http.port={{ erigon_http_port }} \
+  --http.api={{ erigon_http_api }} \
+  --http.compression \
+{% if erigon_http_corsdomain | default('') != '' %}
+  --http.corsdomain={{ erigon_http_corsdomain }} \
+{% endif %}
+{% if erigon_http_vhosts | default('') != '' %}
+  --http.vhosts={{ erigon_http_vhosts }} \
+{% endif %}
+{% endif %}
+{% if erigon_ws_enabled %}
+  --ws \
+{% if erigon_ws_port | default(0) | int > 0 %}
+  --ws.port={{ erigon_ws_port }} \
+{% endif %}
+  --ws.compression \
+{% endif %}
+  --rpc.batch.concurrency={{ erigon_rpc_batch_concurrency }} \
+  --rpc.batch.limit={{ erigon_rpc_batch_limit }} \
+  --rpc.gascap={{ erigon_rpc_gas_cap }} \
+  --trace.maxtraces={{ erigon_trace_max_traces }} \
+{% if erigon_rpc_returndata_limit | default(0) | int > 0 %}
+  --rpc.returndata.limit={{ erigon_rpc_returndata_limit }} \
+{% endif %}
+{% if erigon_rpc_allow_unprotected_txs | default(false) %}
+  --rpc.allow-unprotected-txs=true \
+{% endif %}
+{% if erigon_rpc_txfeecap | default('') != '' %}
+  --rpc.txfeecap={{ erigon_rpc_txfeecap }} \
+{% endif %}
+{% if erigon_rpc_slow | default('') != '' %}
+  --rpc.slow={{ erigon_rpc_slow }} \
+{% endif %}
+  --authrpc.port={{ erigon_authrpc_port }} \
+  --authrpc.addr={{ erigon_authrpc_addr }} \
+  --authrpc.vhosts={{ erigon_authrpc_vhosts }} \
+  --authrpc.jwtsecret={{ jwt_secret_path }} \
+{% if erigon_private_api_addr | default('') != '' %}
+  --private.api.addr={{ erigon_private_api_addr }} \
+{% endif %}
+  --port={{ erigon_p2p_port }} \
+  --torrent.download.rate={{ erigon_torrent_download_rate }} \
+  --torrent.port={{ erigon_torrent_port }} \
+{% if erigon_downloader_verify | default(false) %}
+  --downloader.verify=true \
+{% endif %}
+{% if erigon_batch_size | default('') != '' %}
+  --batchSize={{ erigon_batch_size }} \
+{% endif %}
+{% if erigon_db_pagesize | default('') != '' %}
+  --db.pagesize={{ erigon_db_pagesize }} \
+{% endif %}
+{% if erigon_metrics_enabled %}
+  --metrics \
+  --metrics.port={{ erigon_metrics_port }} \
+{% endif %}
+{% if external_ip | default('') != '' %}
+  --nat=extip:{{ external_ip }} \
+{% endif %}
+  --log.console.verbosity=info
+
+[Install]
+WantedBy=multi-user.target

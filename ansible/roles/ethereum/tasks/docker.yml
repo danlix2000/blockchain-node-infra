@@ -1,0 +1,122 @@
+---
+# =============================================================================
+# Ethereum Role - Docker Install
+# =============================================================================
+# Supported combinations:
+#   - reth + lighthouse (archive)
+#   - geth + prysm (full)
+# =============================================================================
+
+- name: Display deployment configuration
+  ansible.builtin.debug:
+    msg: |
+      Deploying Ethereum {{ node_type }} node (docker):
+        Execution: {{ execution_client }} ({{ vars.get(execution_client + '_version', 'unknown') }})
+        Consensus: {{ consensus_client }} ({{ vars.get(consensus_client + '_version', 'unknown') }})
+        Network: {{ ethereum_network }}
+
+- name: Validate docker client pair
+  ansible.builtin.assert:
+    that:
+      - (execution_client == "reth" and consensus_client == "lighthouse") or
+        (execution_client == "geth" and consensus_client == "prysm")
+    fail_msg: "Unsupported docker client pair {{ execution_client }} + {{ consensus_client }}."
+
+- name: Create configuration directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: "0755"
+  loop:
+    - "{{ ethereum_config_dir }}"
+    - "{{ docker_compose_dir }}"
+
+- name: Create data directories for execution client
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: "0755"
+  loop:
+    - "{{ ethereum_data_dir }}/{{ execution_client }}"
+    - "{{ ethereum_data_dir }}/{{ execution_client }}/logs"
+
+- name: Create data directories for consensus client
+  ansible.builtin.file:
+    path: "{{ ethereum_data_dir }}/{{ consensus_client }}"
+    state: directory
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: "0755"
+
+# ---------------------------------------------------------------------------
+# JWT Secret Management
+# ---------------------------------------------------------------------------
+
+- name: Check if JWT secret exists
+  ansible.builtin.stat:
+    path: "{{ ethereum_config_dir }}/jwt.hex"
+  register: jwt_file
+
+- name: Generate JWT secret
+  ansible.builtin.command: openssl rand -hex 32
+  register: jwt_generated
+  changed_when: false
+  when:
+    - jwt_secret == ""
+    - not jwt_file.stat.exists
+
+- name: Write JWT secret
+  ansible.builtin.copy:
+    dest: "{{ ethereum_config_dir }}/jwt.hex"
+    content: "{{ jwt_secret if jwt_secret != '' else jwt_generated.stdout }}"
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: "0600"
+  when: jwt_secret != "" or not jwt_file.stat.exists
+  notify: Restart ethereum
+
+# ---------------------------------------------------------------------------
+# Docker Compose Deployment
+# ---------------------------------------------------------------------------
+
+- name: Deploy Docker Compose file
+  ansible.builtin.template:
+    src: "{{ execution_client }}-{{ consensus_client }}.yml.j2"
+    dest: "{{ docker_compose_dir }}/docker-compose.yml"
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: "0644"
+  notify: Restart ethereum
+
+- name: Deploy environment file
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ docker_compose_dir }}/.env"
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: "0600"
+  notify: Restart ethereum
+
+# ---------------------------------------------------------------------------
+# Systemd Service
+# ---------------------------------------------------------------------------
+
+- name: Deploy systemd service
+  ansible.builtin.template:
+    src: ethereum.service.j2
+    dest: /etc/systemd/system/ethereum.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart ethereum
+
+- name: Enable and start ethereum service
+  ansible.builtin.systemd:
+    name: ethereum
+    enabled: true
+    state: started
+    daemon_reload: true

@@ -1,0 +1,76 @@
+---
+# =============================================================================
+# Erigon Deployment Playbook
+# =============================================================================
+# Deploys Erigon v3 (binary build) with built-in Caplin consensus client.
+# No Docker required - uses systemd service directly.
+#
+# Usage:
+#   cd ansible
+#   export TF_TOKEN_app_terraform_io="your-api-token"
+#
+#   # AWS - Deploy mainnet Erigon nodes
+#   ansible-playbook -i inventory/ethereum_mainnet_aws_terraform_state.yml playbooks/erigon.yml
+#
+#   # AWS - Deploy Sepolia Erigon nodes
+#   ansible-playbook -i inventory/ethereum_sepolia_aws_terraform_state.yml playbooks/erigon.yml
+#
+#   # Latitude BM - Deploy mainnet Erigon nodes
+#   ansible-playbook -i inventory/ethereum_mainnet_latitude_terraform_state.yml playbooks/erigon.yml
+#
+#   # Latitude BM - Deploy Sepolia Erigon nodes
+#   ansible-playbook -i inventory/ethereum_sepolia_latitude_terraform_state.yml playbooks/erigon.yml
+#
+#   # Deploy specific node type (works with any inventory)
+#   ansible-playbook -i inventory/ethereum_mainnet_aws_terraform_state.yml playbooks/erigon.yml --limit node_full
+#   ansible-playbook -i inventory/ethereum_mainnet_aws_terraform_state.yml playbooks/erigon.yml --limit node_archive
+#
+#   # Dry run
+#   ansible-playbook -i inventory/ethereum_mainnet_aws_terraform_state.yml playbooks/erigon.yml --check
+#
+#   # Deploy only HAProxy
+#   ansible-playbook -i inventory/ethereum_mainnet_aws_terraform_state.yml playbooks/erigon.yml --tags haproxy
+#
+# Tags:
+#   - common: System setup, packages, data volume
+#   - erigon: Erigon build, config, systemd service
+#   - haproxy: HAProxy reverse proxy (TLS + API key auth)
+# =============================================================================
+
+- name: Deploy Erigon nodes
+  hosts: erigon
+  become: true
+  vars:
+    install_docker: false
+
+  pre_tasks:
+    - name: Display deployment info
+      ansible.builtin.debug:
+        msg: |
+          Deploying Erigon {{ erigon_version }} (binary)
+          Chain: {{ erigon_chain }}
+          Mode: {{ erigon_prune_mode | default('full (default)') }}
+          Caplin: {{ 'built-in' if not erigon_externalcl else 'external' }}
+          Host: {{ inventory_hostname }}
+
+  roles:
+    - role: common
+      tags: [common]
+
+    - role: erigon
+      tags: [erigon]
+
+    - role: haproxy
+      tags: [haproxy]
+      when: haproxy_enabled | default(false) | bool
+
+  post_tasks:
+    - name: Display completion info
+      ansible.builtin.debug:
+        msg: |
+          Erigon deployment complete!
+          Service: systemctl status erigon
+          Logs: journalctl -u erigon -f
+          RPC: curl -s http://localhost:{{ erigon_http_port }} -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}'

@@ -1,0 +1,20 @@
+---
+# =============================================================================
+# Erigon Systemd Service Tasks
+# =============================================================================
+
+- name: Deploy Erigon systemd unit
+  ansible.builtin.template:
+    src: erigon.service.j2
+    dest: /etc/systemd/system/erigon.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart erigon
+
+- name: Enable and start Erigon service
+  ansible.builtin.systemd:
+    name: erigon
+    enabled: true
+    state: started
+    daemon_reload: true

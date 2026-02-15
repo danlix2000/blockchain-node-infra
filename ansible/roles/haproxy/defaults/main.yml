@@ -1,0 +1,82 @@
+---
+# =============================================================================
+# HAProxy Role - Default Variables
+# =============================================================================
+# Reverse proxy for blockchain node RPC endpoints with TLS termination,
+# API key authentication, and WebSocket support.
+#
+# Required variables:
+#   - haproxy_domain        (per-node via Terraform domain field, or group_vars)
+#   - haproxy_certbot_email (plaintext in group_vars/all/main.yml)
+#
+# Secrets (store in Ansible vault per role group):
+#   - haproxy_api_key       (UUID4 - via vault_haproxy_api_key in group_vars/<role>/vault.yml)
+#   - haproxy_stats_password (via vault_haproxy_stats_password in group_vars/<role>/vault.yml)
+#   - haproxy_certbot_aws_* (Latitude BM only - via group_vars/platform_latitude/vault.yml)
+# =============================================================================
+
+# --- Core ---
+haproxy_enabled: true
+haproxy_domain: ""
+
+# --- API Key (file-based) ---
+# HAProxy references the file path in ACLs, never the key value directly.
+# Set vault_haproxy_api_key in per-role vault (group_vars/erigon/vault.yml
+# or group_vars/ethereum/vault.yml). Empty = no auth enforced.
+haproxy_api_key: ""
+haproxy_api_keys_dir: /etc/haproxy/api-keys
+haproxy_api_keys_file: api.key
+
+# --- Backend Ports ---
+# Override in group_vars to map to execution client ports:
+#   erigon:  haproxy_backend_http_port: "{{ erigon_http_port }}"
+#   docker:  haproxy_backend_http_port: "{{ ports.execution_http }}"
+haproxy_backend_http_port: 8545
+haproxy_backend_ws_port: 8546
+haproxy_backend_ws_enabled: true
+
+# --- Certbot / TLS ---
+haproxy_certbot_email: ""
+haproxy_ssl_dir: /etc/haproxy/ssl
+haproxy_ssl_cert_path: "{{ haproxy_ssl_dir }}/haproxy.pem"
+# AWS credentials for BM nodes (empty = use instance profile on AWS EC2)
+# Set via vault_haproxy_certbot_aws_* in group_vars/platform_latitude/vault.yml
+haproxy_certbot_aws_access_key: ""
+haproxy_certbot_aws_secret_key: ""
+
+# --- Connection Limits ---
+haproxy_maxconn: 500000
+
+# --- Timeouts ---
+haproxy_timeout_connect: "20s"
+haproxy_timeout_client: "100s"
+haproxy_timeout_server: "100s"
+haproxy_timeout_tunnel: "3600s"
+haproxy_timeout_http_request: "15s"
+haproxy_timeout_queue: "30s"
+
+# --- WebSocket Timeouts ---
+haproxy_ws_timeout_server: "3600s"
+haproxy_ws_timeout_client: "3600s"
+haproxy_ws_timeout_tunnel: "1h"
+
+# --- Stats Page ---
+haproxy_stats_enabled: true
+haproxy_stats_port: 8404
+haproxy_stats_bind: "127.0.0.1"
+haproxy_stats_uri: "/haproxy?stats"
+haproxy_stats_username: "admin"
+haproxy_stats_password: ""
+
+# --- Prometheus Metrics ---
+haproxy_metrics_enabled: false
+haproxy_metrics_port: 8405
+haproxy_metrics_bind: "127.0.0.1"
+
+# --- Firewall (UFW) ---
+# Disabled by default (AWS uses Security Groups).
+# Enable for bare metal via group_vars/platform_latitude/main.yml
+haproxy_firewall_enabled: false
+haproxy_firewall_ports:
+  - { port: 80, proto: "tcp", comment: "HAProxy HTTP" }
+  - { port: 443, proto: "tcp", comment: "HAProxy HTTPS" }

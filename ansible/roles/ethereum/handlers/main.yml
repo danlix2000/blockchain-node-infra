@@ -1,0 +1,10 @@
+---
+# -----------------------------------------------------------------------------
+# Ethereum Role Handlers
+# -----------------------------------------------------------------------------
+
+- name: Restart ethereum
+  ansible.builtin.systemd:
+    name: ethereum
+    state: restarted
+    daemon_reload: true

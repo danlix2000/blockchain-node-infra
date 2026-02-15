@@ -1,0 +1,61 @@
+---
+# =============================================================================
+# Common Role - Default Fallbacks
+# =============================================================================
+# These are FALLBACK values only. Primary configuration should be in:
+#   - inventory/group_vars/all.yml (global settings)
+#
+# Role defaults have LOWEST precedence in Ansible.
+# =============================================================================
+
+# System user for running services
+# Note: Avoid UID/GID 1000 as it conflicts with Ubuntu's default user
+service_user: ethereum
+service_group: ethereum
+service_uid: 2000
+service_gid: 2000
+
+# Data volume configuration
+data_mount_point: /data
+data_fs_type: ext4
+
+# Docker configuration
+install_docker: true
+docker_compose_version: "2.27.0"
+
+# System tuning
+sysctl_settings:
+  # Network performance
+  net.core.somaxconn: 65535
+  net.core.netdev_max_backlog: 65535
+  net.ipv4.tcp_max_syn_backlog: 65535
+  net.ipv4.tcp_fin_timeout: 30
+  net.ipv4.tcp_keepalive_time: 300
+  net.ipv4.tcp_keepalive_probes: 5
+  net.ipv4.tcp_keepalive_intvl: 15
+  # Memory
+  vm.swappiness: 10
+  vm.dirty_ratio: 60
+  vm.dirty_background_ratio: 2
+  # File handles
+  fs.file-max: 2097152
+  fs.nr_open: 2097152
+
+# Security limits
+security_limits:
+  - domain: "*"
+    type: soft
+    item: nofile
+    value: 1048576
+  - domain: "*"
+    type: hard
+    item: nofile
+    value: 1048576
+  - domain: "*"
+    type: soft
+    item: nproc
+    value: 65535
+  - domain: "*"
+    type: hard
+    item: nproc
+    value: 65535

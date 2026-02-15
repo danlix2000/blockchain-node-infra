@@ -1,0 +1,141 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  TERRAFORM_VERSION: "1.13.3"
+  ANSIBLE_VERSION: "2.16"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Terraform Validation
+  # ---------------------------------------------------------------------------
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stack_dir:
+          - terraform/stacks/aws/ethereum/mainnet
+          - terraform/stacks/aws/ethereum/sepolia
+          - terraform/stacks/latitude/ethereum/mainnet
+          - terraform/stacks/latitude/ethereum/sepolia
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive -diff terraform/
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+        working-directory: ${{ matrix.stack_dir }}
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: ${{ matrix.stack_dir }}
+
+  # ---------------------------------------------------------------------------
+  # Ansible Validation
+  # ---------------------------------------------------------------------------
+  ansible:
+    name: Ansible
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ansible
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Ansible
+        run: |
+          pip install ansible-core==${{ env.ANSIBLE_VERSION }}.*
+          pip install ansible-lint yamllint
+
+      - name: Install Ansible Collections
+        run: ansible-galaxy collection install -r requirements.yml
+
+      - name: Create dummy vault password file
+        run: echo "ci-dummy-password" > .vault_password
+
+      - name: YAML Lint
+        run: yamllint -c ../.yamllint.yml .
+
+      - name: Ansible Lint
+        run: ansible-lint playbooks/
+
+      - name: Ansible Syntax Check
+        run: |
+          ansible-playbook -i inventory/ci.yml playbooks/ethereum.yml --syntax-check
+          ansible-playbook -i inventory/ci.yml playbooks/erigon.yml --syntax-check
+          ansible-playbook -i inventory/ci.yml playbooks/raid.yml --syntax-check
+          ansible-playbook -i inventory/ci.yml playbooks/site.yml --syntax-check
+
+  # ---------------------------------------------------------------------------
+  # Docker Compose Validation
+  # ---------------------------------------------------------------------------
+  docker:
+    name: Docker
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Reth+Lighthouse Compose
+        run: |
+          cd examples/docker/ethereum/reth-lighthouse
+          cp .env.example .env
+          docker compose --profile full config --quiet
+          docker compose --profile archive config --quiet
+
+      - name: Validate Geth+Prysm Compose
+        run: |
+          cd examples/docker/ethereum/geth-prysm
+          cp .env.example .env
+          docker compose config --quiet
+
+  # ---------------------------------------------------------------------------
+  # Security Scanning
+  # ---------------------------------------------------------------------------
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"  # Don't fail on findings, just report
+
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: terraform/
+          quiet: true
+          soft_fail: true  # Don't fail on findings, just report
+          framework: terraform

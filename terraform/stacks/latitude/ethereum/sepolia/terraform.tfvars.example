@@ -1,0 +1,49 @@
+# -----------------------------------------------------------------------------
+# Blockchain Infrastructure - Ethereum Sepolia (Latitude.sh Bare Metal)
+# -----------------------------------------------------------------------------
+# Copy this file to terraform.tfvars and customize for your deployment.
+# Sensitive values should NOT be committed to version control.
+#
+# This configuration is for Ethereum Sepolia testnet on Latitude.sh bare metal.
+#
+# Instance naming: {site}-{chain}-{network}-{node_key}
+# Example: chi-ethereum-sepolia-erigon-arch
+#
+# Authentication:
+#   export LATITUDESH_AUTH_TOKEN="your-latitude-api-token"
+# -----------------------------------------------------------------------------
+
+# Latitude.sh project (from dashboard: Projects)
+project_name = "your-project-name" # Project name in Latitude.sh console
+project_id   = "your-project-id"   # Project ID in Latitude.sh console
+
+chain    = "ethereum"
+network  = "sepolia"
+platform = "latitude"
+
+# SSH key IDs (from dashboard: Account > SSH Keys)
+ssh_key_ids = ["your-ssh-key-id"]
+
+# -----------------------------------------------------------------------------
+# Resource Tags
+# -----------------------------------------------------------------------------
+
+tags = {
+  Environment = "testnet"
+  ManagedBy   = "terraform"
+}
+
+# -----------------------------------------------------------------------------
+# Node Configuration
+# -----------------------------------------------------------------------------
+# All nodes are defined in nodes.tfvars (single source of truth).
+#
+# Deploy all nodes:
+#   terraform apply -var-file=nodes.tfvars
+#
+# Deploy specific node (use -target):
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["erigon-arch"]'
+#
+# Configure specific node (use --limit):
+#   ansible-playbook -i inventory/ethereum_sepolia_latitude_terraform_state.yml playbooks/erigon.yml --limit node_archive
+# -----------------------------------------------------------------------------

@@ -1,0 +1,28 @@
+# =============================================================================
+# HCP Terraform (Terraform Cloud) Backend Configuration
+# =============================================================================
+# Separate workspace from AWS to isolate state per platform.
+#
+# Setup:
+#   1. Create workspace "latitude-ethereum-mainnet" in your TFC organization
+#   2. Set execution mode to "Local" in workspace settings
+#   3. Copy this file to cloud.tf
+#   4. Run: terraform init
+#
+# Authentication:
+#   export TF_TOKEN_app_terraform_io="your-api-token"
+#   # or: terraform login
+#
+# Latitude.sh Authentication:
+#   export LATITUDESH_AUTH_TOKEN="your-latitude-api-token"
+# =============================================================================
+
+terraform {
+  cloud {
+    organization = "your-organization"
+
+    workspaces {
+      name = "latitude-ethereum-mainnet"
+    }
+  }
+}

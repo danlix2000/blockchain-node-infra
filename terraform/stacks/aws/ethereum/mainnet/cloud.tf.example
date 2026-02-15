@@ -1,0 +1,67 @@
+# =============================================================================
+# HCP Terraform (Terraform Cloud) Backend Configuration
+# =============================================================================
+# Recommended for multi-cloud deployments. Provides centralized state
+# management, locking, and collaboration features.
+#
+# Setup:
+#   1. Create account at https://app.terraform.io
+#   2. Create organization and workspace
+#   3. Generate API token: User Settings > Tokens > Create API token
+#   4. Export token (see below) OR run: terraform login
+#   5. Rename this file to cloud.tf
+#   6. Run: terraform init
+# =============================================================================
+
+terraform {
+  cloud {
+    organization = "your-organization"
+
+    workspaces {
+      name = "aws-ethereum-mainnet-full"
+    }
+  }
+}
+
+# =============================================================================
+# Authentication Options
+# =============================================================================
+#
+# Option 1: API Token (recommended for CI/CD and scripts)
+# --------------------------------------------------------
+# Generate token at: https://app.terraform.io/app/settings/tokens
+#
+#   export TF_TOKEN_app_terraform_io="your-api-token"
+#
+# For Terraform Enterprise:
+#   export TF_TOKEN_terraform_example_com="your-api-token"
+#
+# Option 2: Interactive Login
+# ---------------------------
+#   terraform login
+#
+# Option 3: Credentials File
+# --------------------------
+# Add to ~/.terraform.d/credentials.tfrc.json:
+#   {
+#     "credentials": {
+#       "app.terraform.io": {
+#         "token": "your-api-token"
+#       }
+#     }
+#   }
+#
+# =============================================================================
+# Execution Mode: LOCAL
+# =============================================================================
+# This repo uses local execution mode:
+#   - Terraform runs on your machine
+#   - TF Cloud stores state only (centralized, with locking)
+#   - Use local AWS credentials (~/.aws/credentials or env vars)
+#
+# Set in TF Cloud: Workspace > Settings > General > Execution Mode > Local
+#
+# AWS Credentials (configure locally):
+#   Option A: aws configure
+#   Option B: export AWS_ACCESS_KEY_ID="..." && export AWS_SECRET_ACCESS_KEY="..."
+# =============================================================================

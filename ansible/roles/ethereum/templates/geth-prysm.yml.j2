@@ -1,0 +1,109 @@
+# {{ ansible_managed }}
+# =============================================================================
+# Ethereum Node - Geth + Prysm ({{ node_type | capitalize }})
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Geth - Execution Layer Client
+  # ---------------------------------------------------------------------------
+  geth:
+    image: {{ docker_images.geth }}:${GETH_VERSION}
+    container_name: geth
+    restart: unless-stopped
+    user: "${UID}:${GID}"
+    network_mode: host
+    stop_grace_period: 3m
+    volumes:
+      - {{ ethereum_data_dir }}/geth:/data
+      - {{ ethereum_config_dir }}/jwt.hex:/jwt.hex:ro
+    command:
+      - --datadir=/data
+      - --{{ ethereum_network }}
+      - --syncmode={{ geth_syncmode | default('full') }}
+      - --gcmode=full
+      - --db.engine=pebble
+      - --state.scheme=path
+      - --port={{ ports.execution_p2p }}
+{% if external_ip | default('') != '' %}
+      - --nat=extip:{{ external_ip }}
+{% endif %}
+{% if rpc_http_enabled | default(true) %}
+      - --http
+      - --http.addr=127.0.0.1
+      - --http.port={{ ports.execution_http }}
+      - --http.api={{ rpc_http_api }}
+      - --http.corsdomain=*
+      - --http.vhosts=*
+{% endif %}
+{% if rpc_ws_enabled | default(true) %}
+      - --ws
+      - --ws.addr=127.0.0.1
+      - --ws.port={{ ports.execution_ws }}
+      - --ws.api={{ rpc_ws_api }}
+      - --ws.origins=*
+{% endif %}
+      - --authrpc.addr=127.0.0.1
+      - --authrpc.port={{ ports.execution_authrpc }}
+      - --authrpc.vhosts=*
+      - --authrpc.jwtsecret=/jwt.hex
+      - --metrics
+      - --metrics.addr=127.0.0.1
+      - --metrics.port=6060
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:{{ ports.execution_http }} --post-data='{\"jsonrpc\":\"2.0\",\"method\":\"eth_syncing\",\"params\":[],\"id\":1}' --header='Content-Type: application/json' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  # ---------------------------------------------------------------------------
+  # Prysm - Consensus Layer Client (Beacon Node)
+  # ---------------------------------------------------------------------------
+  prysm:
+    image: {{ docker_images.prysm }}:${PRYSM_VERSION}
+    container_name: prysm
+    restart: unless-stopped
+    user: "${UID}:${GID}"
+    network_mode: host
+    stop_grace_period: 3m
+    depends_on:
+      geth:
+        condition: service_started
+    volumes:
+      - {{ ethereum_data_dir }}/prysm:/data
+      - {{ ethereum_config_dir }}/jwt.hex:/jwt.hex:ro
+    command:
+      - --datadir=/data
+      - --{{ ethereum_network }}
+      - --execution-endpoint=http://127.0.0.1:{{ ports.execution_authrpc }}
+      - --jwt-secret=/jwt.hex
+      - --p2p-tcp-port=13000
+      - --p2p-udp-port=12000
+{% if rpc_http_enabled | default(true) %}
+      - --grpc-gateway-host=127.0.0.1
+      - --grpc-gateway-port=3500
+{% endif %}
+{% if checkpoint_sync_url | default('') != '' %}
+      - --checkpoint-sync-url={{ checkpoint_sync_url }}
+      - --genesis-beacon-api-url={{ checkpoint_sync_url }}
+{% endif %}
+      - --accept-terms-of-use
+      - --monitoring-host=127.0.0.1
+      - --monitoring-port=8080
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:3500/eth/v1/node/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"

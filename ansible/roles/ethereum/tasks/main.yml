@@ -1,0 +1,7 @@
+---
+# =============================================================================
+# Ethereum Role - Docker Deployment
+# =============================================================================
+
+- name: Include Docker deployment tasks
+  ansible.builtin.include_tasks: docker.yml

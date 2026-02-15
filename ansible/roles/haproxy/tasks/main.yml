@@ -1,0 +1,24 @@
+---
+# =============================================================================
+# HAProxy Role - Main Task Orchestrator
+# =============================================================================
+# Deploys HAProxy as a reverse proxy for blockchain node RPC endpoints.
+# Provides TLS (Let's Encrypt), API key auth, and WebSocket support.
+#
+# Usage:
+#   ansible-playbook playbooks/erigon.yml --tags haproxy
+#   ansible-playbook playbooks/ethereum.yml --tags haproxy
+# =============================================================================
+
+- name: Install HAProxy and Certbot
+  ansible.builtin.include_tasks: install.yml
+
+- name: Setup TLS certificate via Certbot
+  ansible.builtin.include_tasks: certbot.yml
+
+- name: Configure HAProxy
+  ansible.builtin.include_tasks: configure.yml
+
+- name: Configure firewall
+  ansible.builtin.include_tasks: firewall.yml
+  when: haproxy_firewall_enabled | bool

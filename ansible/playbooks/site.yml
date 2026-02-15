@@ -1,0 +1,13 @@
+---
+# -----------------------------------------------------------------------------
+# Site Playbook
+# -----------------------------------------------------------------------------
+# Usage:
+#   ansible-playbook -i inventory/ethereum_mainnet_aws_terraform_state.yml playbooks/site.yml
+# -----------------------------------------------------------------------------
+
+- name: Deploy Ethereum nodes
+  import_playbook: ethereum.yml
+
+- name: Deploy Erigon nodes
+  import_playbook: erigon.yml

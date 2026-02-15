@@ -1,0 +1,23 @@
+---
+# =============================================================================
+# Erigon Role - Main Task Orchestrator
+# =============================================================================
+# Binary-based Erigon v3 deployment with built-in Caplin consensus client.
+#
+# Usage:
+#   ansible-playbook playbooks/erigon.yml
+#   ansible-playbook playbooks/erigon.yml --limit node_archive
+# =============================================================================
+
+- name: Build Erigon from source
+  ansible.builtin.include_tasks: build.yml
+
+- name: Configure Erigon
+  ansible.builtin.include_tasks: configure.yml
+
+- name: Setup systemd service
+  ansible.builtin.include_tasks: service.yml
+
+- name: Configure firewall
+  ansible.builtin.include_tasks: firewall.yml
+  when: erigon_firewall_enabled | bool

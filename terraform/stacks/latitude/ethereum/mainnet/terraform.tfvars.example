@@ -1,0 +1,51 @@
+# -----------------------------------------------------------------------------
+# Blockchain Infrastructure - Ethereum Mainnet (Latitude.sh Bare Metal)
+# -----------------------------------------------------------------------------
+# Copy this file to terraform.tfvars and customize for your deployment.
+# Sensitive values should NOT be committed to version control.
+#
+# This configuration is for Ethereum Mainnet on Latitude.sh bare metal.
+# For testnets (Sepolia), copy this directory and update the network variable.
+#
+# Instance naming: {site}-{chain}-{network}-{node_key}
+# Example: chi-ethereum-mainnet-full
+#
+# Authentication:
+#   export LATITUDESH_AUTH_TOKEN="your-latitude-api-token"
+# -----------------------------------------------------------------------------
+
+# Latitude.sh project (from dashboard: Projects)
+project_name = "your-project-name" # Project name in Latitude.sh console
+project_id   = "your-project-id"   # Project ID in Latitude.sh console
+
+chain    = "ethereum"
+network  = "mainnet"
+platform = "latitude"
+
+# SSH key IDs (from dashboard: Account > SSH Keys)
+ssh_key_ids = ["your-ssh-key-id"]
+
+# -----------------------------------------------------------------------------
+# Resource Tags
+# -----------------------------------------------------------------------------
+
+tags = {
+  Environment = "prod"
+  ManagedBy   = "terraform"
+}
+
+# -----------------------------------------------------------------------------
+# Node Configuration
+# -----------------------------------------------------------------------------
+# All nodes are defined in nodes.tfvars (single source of truth).
+#
+# Deploy all nodes:
+#   terraform apply -var-file=nodes.tfvars
+#
+# Deploy specific node (use -target):
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["full"]'
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["archive"]'
+#
+# Configure specific node (use --limit):
+#   ansible-playbook -i inventory/ethereum_mainnet_latitude_terraform_state.yml playbooks/ethereum.yml --limit node_full
+# -----------------------------------------------------------------------------

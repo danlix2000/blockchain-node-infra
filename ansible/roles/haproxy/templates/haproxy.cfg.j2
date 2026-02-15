@@ -1,0 +1,114 @@
+# =============================================================================
+# HAProxy Configuration
+# =============================================================================
+# Managed by Ansible - do not edit manually.
+#
+# TLS termination + API key auth + WebSocket routing for blockchain RPC.
+# Backends point to localhost execution client ports.
+# =============================================================================
+
+global
+    maxconn {{ haproxy_maxconn }}
+    log /dev/log local0
+    user haproxy
+    group haproxy
+    daemon
+    stats socket /run/haproxy/admin.sock user haproxy group haproxy mode 660 level admin
+
+defaults
+    timeout connect {{ haproxy_timeout_connect }}
+    timeout client {{ haproxy_timeout_client }}
+    timeout server {{ haproxy_timeout_server }}
+    timeout tunnel {{ haproxy_timeout_tunnel }}
+    timeout http-request {{ haproxy_timeout_http_request }}
+    timeout queue {{ haproxy_timeout_queue }}
+    timeout tarpit 60s
+    default-server rise 3 slowstart 30s
+    default-server inter 5s fall 3
+    option forwardfor
+    log global
+    mode http
+    option httplog
+    maxconn {{ haproxy_maxconn }}
+
+# -----------------------------------------------------------------------------
+# HTTP Frontend - Redirect to HTTPS
+# -----------------------------------------------------------------------------
+frontend http_listener
+    bind *:80 name http
+    http-request redirect scheme https code 301
+
+# -----------------------------------------------------------------------------
+# HTTPS Frontend - TLS termination + API key auth
+# -----------------------------------------------------------------------------
+frontend https_listener
+    bind *:443 ssl crt {{ haproxy_ssl_cert_path }}
+    option httpslog
+
+{% if haproxy_api_key | default('') != '' %}
+    # API key validation (file-based lookup)
+    acl valid_api_key hdr(X-API-Key) -i -f {{ haproxy_api_keys_dir }}/{{ haproxy_api_keys_file }}
+    acl valid_api_key_url urlp(apikey) -i -f {{ haproxy_api_keys_dir }}/{{ haproxy_api_keys_file }}
+    http-request deny deny_status 403 if !valid_api_key !valid_api_key_url
+{% endif %}
+
+{% if haproxy_backend_ws_enabled | bool %}
+    # WebSocket upgrade detection
+    acl hdr_connection_upgrade hdr(Connection) -i upgrade
+    acl hdr_upgrade_websocket hdr(Upgrade)     -i websocket
+    use_backend ws if hdr_connection_upgrade hdr_upgrade_websocket
+{% endif %}
+
+    default_backend rpc
+
+# -----------------------------------------------------------------------------
+# RPC Backend
+# -----------------------------------------------------------------------------
+backend rpc
+    balance leastconn
+    retries 1
+    server rpc-node 127.0.0.1:{{ haproxy_backend_http_port }}
+
+{% if haproxy_backend_ws_enabled | bool %}
+# -----------------------------------------------------------------------------
+# WebSocket Backend
+# -----------------------------------------------------------------------------
+backend ws
+    balance leastconn
+    timeout server {{ haproxy_ws_timeout_server }}
+    timeout client {{ haproxy_ws_timeout_client }}
+    timeout tunnel {{ haproxy_ws_timeout_tunnel }}
+    retries 1
+    server ws-node 127.0.0.1:{{ haproxy_backend_ws_port }}
+{% endif %}
+
+# -----------------------------------------------------------------------------
+# Fallback Backend
+# -----------------------------------------------------------------------------
+backend not_found
+    mode http
+    http-response return status 404 content-type text/plain string "404 Not Found" hdr Cache-Control no-cache
+
+{% if haproxy_stats_enabled | bool %}
+# -----------------------------------------------------------------------------
+# Stats Page (localhost only by default)
+# -----------------------------------------------------------------------------
+frontend stats
+    bind {{ haproxy_stats_bind }}:{{ haproxy_stats_port }}
+    stats enable
+    stats uri {{ haproxy_stats_uri }}
+    stats refresh 10s
+{% if haproxy_stats_username | default('') != '' and haproxy_stats_password | default('') != '' %}
+    stats auth {{ haproxy_stats_username }}:{{ haproxy_stats_password }}
+{% endif %}
+{% endif %}
+
+{% if haproxy_metrics_enabled | bool %}
+# -----------------------------------------------------------------------------
+# Prometheus Metrics Exporter
+# -----------------------------------------------------------------------------
+frontend prometheus
+    bind {{ haproxy_metrics_bind }}:{{ haproxy_metrics_port }}
+    http-request use-service prometheus-exporter
+    no log
+{% endif %}

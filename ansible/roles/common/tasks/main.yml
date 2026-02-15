@@ -1,0 +1,241 @@
+---
+# -----------------------------------------------------------------------------
+# Common Role - System Setup
+# -----------------------------------------------------------------------------
+# Prepares the system for running Ethereum nodes:
+# - Sets hostname
+# - Installs required packages
+# - Configures data volume
+# - Installs Docker
+# - Applies system tuning
+# -----------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Hostname Configuration
+# ---------------------------------------------------------------------------
+
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ instance_name | default(inventory_hostname) }}"
+
+- name: Update /etc/hosts with hostname
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1'
+    line: "127.0.1.1 {{ instance_name | default(inventory_hostname) }}"
+    state: present
+
+# ---------------------------------------------------------------------------
+# Package Installation
+# ---------------------------------------------------------------------------
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install required packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+      - jq
+      - htop
+      - iotop
+      - nvme-cli
+      - xfsprogs
+      - unzip
+      - acl
+    state: present
+
+# ---------------------------------------------------------------------------
+# Service User Setup
+# ---------------------------------------------------------------------------
+
+- name: Create service group
+  ansible.builtin.group:
+    name: "{{ service_group }}"
+    gid: "{{ service_gid }}"
+    system: true
+    state: present
+
+- name: Create service user
+  ansible.builtin.user:
+    name: "{{ service_user }}"
+    uid: "{{ service_uid }}"
+    group: "{{ service_group }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ data_mount_point }}"
+    create_home: false
+
+# ---------------------------------------------------------------------------
+# Data Volume Setup
+# ---------------------------------------------------------------------------
+# AWS: NVMe instances remap device names (/dev/sdf -> /dev/nvme1n1).
+# Bare metal: Local NVMe/SATA drives; device varies by hardware plan.
+# Bare metal RAID: Run playbooks/raid.yml first - this section is skipped
+#   when /data is already mounted (e.g. RAID-0 array).
+# Fallback chain: specified device -> NVMe scan -> largest unmounted disk.
+# ---------------------------------------------------------------------------
+
+- name: Check if data mount point is already mounted (e.g. RAID role)
+  ansible.builtin.command: findmnt -n {{ data_mount_point }}
+  register: data_already_mounted
+  changed_when: false
+  failed_when: false
+
+- name: Skip data volume setup - already mounted
+  ansible.builtin.debug:
+    msg: "{{ data_mount_point }} is already mounted. Skipping disk setup."
+  when: data_already_mounted.rc == 0
+
+- name: Setup data volume
+  when: data_already_mounted.rc != 0
+  block:
+    - name: Check if specified data device exists
+      ansible.builtin.stat:
+        path: "{{ data_device }}"
+      register: data_device_stat
+      when: data_device is defined
+
+    - name: Find NVMe data device if specified device not found
+      ansible.builtin.shell:
+        cmd: set -o pipefail && lsblk -dpno NAME | grep nvme | grep -v nvme0n1 | head -1
+        executable: /bin/bash
+      register: nvme_device
+      changed_when: false
+      failed_when: false
+      when:
+        - data_device is defined
+        - not (data_device_stat.stat.exists | default(false))
+
+    - name: Find largest unmounted disk on bare metal
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          lsblk -dpno NAME,SIZE,TYPE,MOUNTPOINT | \
+            awk '$3 == "disk" && $4 == "" { print $1, $2 }' | \
+            sort -k2 -h | tail -1 | awk '{ print $1 }'
+        executable: /bin/bash
+      register: bare_metal_device
+      changed_when: false
+      failed_when: false
+      when:
+        - data_device is defined
+        - not (data_device_stat.stat.exists | default(false))
+        - nvme_device.stdout | default('') | trim == ''
+        - platform | default('aws') == 'latitude'
+
+    - name: Set actual data device path
+      ansible.builtin.set_fact:
+        actual_data_device: >-
+          {{ data_device if (data_device_stat.stat.exists | default(false))
+             else (nvme_device.stdout | trim) if (nvme_device.stdout | default('') | trim != '')
+             else (bare_metal_device.stdout | trim) if (bare_metal_device.stdout | default('') | trim != '')
+             else '' }}
+      when: data_device is defined
+
+    - name: Create filesystem on data volume
+      community.general.filesystem:
+        fstype: "{{ data_fs_type }}"
+        dev: "{{ actual_data_device }}"
+      when:
+        - actual_data_device | default('') != ''
+
+    - name: Create data mount point
+      ansible.builtin.file:
+        path: "{{ data_mount_point }}"
+        state: directory
+        owner: "{{ service_user }}"
+        group: "{{ service_group }}"
+        mode: "0755"
+
+    - name: Mount data volume
+      ansible.posix.mount:
+        path: "{{ data_mount_point }}"
+        src: "{{ actual_data_device }}"
+        fstype: "{{ data_fs_type }}"
+        opts: noatime,nodiratime
+        state: mounted
+      when:
+        - actual_data_device | default('') != ''
+
+- name: Set data directory ownership
+  ansible.builtin.file:
+    path: "{{ data_mount_point }}"
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: "0755"
+    state: directory
+
+# ---------------------------------------------------------------------------
+# Docker Installation
+# ---------------------------------------------------------------------------
+
+- name: Install Docker
+  when: install_docker | default(true) | bool
+  block:
+    - name: Create Docker keyring directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Add Docker GPG key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Add Docker repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+        filename: docker
+
+    - name: Install Docker packages
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+
+    - name: Add service user to docker group
+      ansible.builtin.user:
+        name: "{{ service_user }}"
+        groups: docker
+        append: true
+
+    - name: Enable and start Docker
+      ansible.builtin.systemd:
+        name: docker
+        enabled: true
+        state: started
+
+# ---------------------------------------------------------------------------
+# System Tuning
+# ---------------------------------------------------------------------------
+
+- name: Apply sysctl settings
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    state: present
+    reload: true
+  loop: "{{ sysctl_settings | dict2items }}"
+
+- name: Configure security limits
+  community.general.pam_limits:
+    domain: "{{ item.domain }}"
+    limit_type: "{{ item.type }}"
+    limit_item: "{{ item.item }}"
+    value: "{{ item.value }}"
+  loop: "{{ security_limits }}"

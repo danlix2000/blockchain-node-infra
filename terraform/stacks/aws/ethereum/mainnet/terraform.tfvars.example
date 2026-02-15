@@ -1,0 +1,82 @@
+# -----------------------------------------------------------------------------
+# Blockchain Infrastructure - Ethereum Mainnet
+# -----------------------------------------------------------------------------
+# Copy this file to terraform.tfvars and customize for your deployment.
+# Sensitive values should NOT be committed to version control.
+#
+# This configuration is for Ethereum Mainnet.
+# For testnets (Sepolia), copy this directory and update the network variable.
+#
+# Instance naming: {region}-{chain}-{network}-{node_key}
+# Example: us-east-1-ethereum-mainnet-full
+# -----------------------------------------------------------------------------
+
+aws_region   = "us-east-1"
+project_name = "blockchain"
+chain        = "ethereum"
+network      = "mainnet"  # For testnets: sepolia
+platform     = "aws"      # Cloud platform: aws, latitude, ovh, etc.
+
+# -----------------------------------------------------------------------------
+# Network Configuration
+# -----------------------------------------------------------------------------
+
+vpc_cidr           = "10.10.0.0/16"
+subnet_cidrs       = ["10.10.0.0/24"]
+azs                = ["us-east-1a"]
+
+# -----------------------------------------------------------------------------
+# Access Control
+# -----------------------------------------------------------------------------
+# Whitelist your VPN or office IP ranges for SSH access
+
+allowed_ssh_cidrs = ["1.2.3.4/32"] # VPN/office IP(s)
+key_name          = "your-keypair" # AWS key pair name (create in EC2 console)
+
+# -----------------------------------------------------------------------------
+# DNS Configuration (Route 53)
+# -----------------------------------------------------------------------------
+# Hosted zone ID for HAProxy A records. Required if any node has a domain.
+# Find zone ID: aws route53 list-hosted-zones --query 'HostedZones[*].[Name,Id]' --output table
+
+# route53_zone_id = "Z0123456789ABCDEFGHIJ"
+
+# -----------------------------------------------------------------------------
+# P2P Security Groups
+# -----------------------------------------------------------------------------
+# P2P ports are managed automatically as per-client security groups.
+# Each node receives only the SGs matching its execution_client and consensus_client:
+#
+#   All execution clients  -> p2p-execution (30303 tcp/udp)
+#   Erigon + Caplin        -> p2p-erigon (30304, 42069, 4000, 4001)
+#   Lighthouse             -> p2p-lighthouse (9000 tcp/udp, 9001 udp)
+#   Prysm                  -> p2p-prysm (13000 tcp, 12000 udp)
+#
+# Use p2p_allowed_cidrs to restrict source CIDRs (default: 0.0.0.0/0).
+
+# p2p_allowed_cidrs = ["0.0.0.0/0"]
+
+# -----------------------------------------------------------------------------
+# Resource Tags
+# -----------------------------------------------------------------------------
+
+tags = {
+  Environment = "prod"
+  ManagedBy   = "terraform"
+}
+
+# -----------------------------------------------------------------------------
+# Node Configuration
+# -----------------------------------------------------------------------------
+# All nodes are defined in nodes.tfvars (single source of truth).
+#
+# Deploy all nodes:
+#   terraform apply -var-file=nodes.tfvars
+#
+# Deploy specific node (use -target):
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["full"]'
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["archive"]'
+#
+# Configure specific node (use --limit):
+#   ansible-playbook -i ansible/inventory/ethereum_mainnet_aws_terraform_state.yml playbooks/ethereum.yml --limit node_full
+# -----------------------------------------------------------------------------

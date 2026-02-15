@@ -1,0 +1,132 @@
+# -----------------------------------------------------------------------------
+# Ethereum Nodes - Sepolia Testnet
+# -----------------------------------------------------------------------------
+# Single source of truth for all Sepolia nodes in this environment.
+# Copy to nodes.tfvars and customize for your deployment.
+#
+# Usage:
+#   terraform plan -var-file=nodes.tfvars
+#   terraform apply -var-file=nodes.tfvars
+#
+# Deploying specific nodes (use -target):
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["full"]'
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["archive"]'
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["erigon-full"]'
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["erigon-arch"]'
+#
+# Configuring specific nodes (use --limit):
+#   ansible-playbook -i inventory/ethereum_sepolia_aws_terraform_state.yml playbooks/ethereum.yml --limit node_full
+#   ansible-playbook -i inventory/ethereum_sepolia_aws_terraform_state.yml playbooks/ethereum.yml --limit node_archive
+#   ansible-playbook -i inventory/ethereum_sepolia_aws_terraform_state.yml playbooks/erigon.yml --limit node_full
+#   ansible-playbook -i inventory/ethereum_sepolia_aws_terraform_state.yml playbooks/erigon.yml --limit node_archive
+#
+# Node naming: {region}-{chain}-{network}-{node_key}
+# Example: us-east-1-ethereum-sepolia-full, us-east-1-ethereum-sepolia-archive
+#
+# Deployment types:
+#   role = "ethereum" -> Docker-based (Ansible playbooks/ethereum.yml)
+#   role = "erigon"   -> Binary build (Ansible playbooks/erigon.yml)
+#
+# Client selection can be explicit per node, or inferred from node_type:
+#   - node_type = "full"    -> Geth + Prysm (defaults, Docker)
+#   - node_type = "archive" -> Reth + Lighthouse (defaults, Docker)
+#   - role = "erigon", node_type = "full"    -> Erigon full (binary, no Docker)
+#   - role = "erigon", node_type = "archive" -> Erigon archive (binary, no Docker)
+# -----------------------------------------------------------------------------
+
+nodes = {
+  # ---------------------------------------------------------------------------
+  # Full Node (Geth + Prysm) - Sepolia [Docker]
+  # ---------------------------------------------------------------------------
+  # Recommended for: RPC endpoints, general testnet use
+  # Sync time: ~1 day with snap sync
+  #
+  # Playbook: ansible-playbook playbooks/ethereum.yml --limit node_full
+  # Upgrade:  Change client versions in group_vars/ethereum/main.yml, re-run playbook
+  #
+  # full = {
+  #   role                   = "ethereum"
+  #   node_type              = "full"
+  #   execution_client       = "geth"
+  #   consensus_client       = "prysm"
+  #   instance_type          = "m7i.xlarge"    # 4 vCPU, 16GB RAM (Sepolia needs less)
+  #   root_volume_size_gb    = 100
+  #   data_volume_size_gb    = 500             # 500GB sufficient for Sepolia full
+  #   data_volume_iops       = 3000
+  #   data_volume_throughput = 125
+  #   associate_eip          = true
+  #   domain                 = "full.rpc.sepolia.example.com"
+  # }
+
+  # ---------------------------------------------------------------------------
+  # Archive Node (Reth + Lighthouse) - Sepolia [Docker]
+  # ---------------------------------------------------------------------------
+  # Recommended for: Historical queries, trace APIs, beacon archive
+  # Lighthouse runs as supernode with --reconstruct-historic-states, --genesis-backfill,
+  # --prune-blobs=false, --prune-payloads=false (full beacon archive).
+  # Sync time: ~3-5 days
+  #
+  # Playbook: ansible-playbook playbooks/ethereum.yml --limit node_archive
+  # Upgrade:  Change client versions in group_vars/ethereum/main.yml, re-run playbook
+  #
+  # archive = {
+  #   role                   = "ethereum"
+  #   node_type              = "archive"
+  #   execution_client       = "reth"
+  #   consensus_client       = "lighthouse"
+  #   instance_type          = "m7i.2xlarge"   # 8 vCPU, 32GB RAM
+  #   root_volume_size_gb    = 100
+  #   data_volume_size_gb    = 1000            # 1TB sufficient for Sepolia archive
+  #   data_volume_iops       = 6000
+  #   data_volume_throughput = 250
+  #   associate_eip          = true
+  #   domain                 = "archive.rpc.sepolia.example.com"
+  # }
+
+  # ---------------------------------------------------------------------------
+  # Erigon Full Node - Sepolia [Binary Build]
+  # ---------------------------------------------------------------------------
+  # Erigon v3 full node - native default mode (no --prune.mode flag).
+  # Sepolia full node needs less storage than archive (~200GB vs ~500GB).
+  #
+  # Playbook: ansible-playbook playbooks/erigon.yml --limit node_full
+  # Upgrade:  Change erigon_version in group_vars/erigon/main.yml, re-run playbook
+  #
+  # erigon-full = {
+  #   role                   = "erigon"        # Uses erigon playbook (binary, not Docker)
+  #   node_type              = "full"          # Erigon default - no archive overrides applied
+  #   execution_client       = "erigon"
+  #   consensus_client       = "caplin"        # Built-in CL (no separate beacon node)
+  #   instance_type          = "m7i.xlarge"    # 4 vCPU, 16GB RAM (Sepolia full needs less)
+  #   root_volume_size_gb    = 100
+  #   data_volume_size_gb    = 500             # 500GB sufficient for Sepolia full
+  #   data_volume_iops       = 3000
+  #   data_volume_throughput = 125
+  #   associate_eip          = true
+  #   domain                 = "erigon-full.rpc.sepolia.example.com"
+  # }
+
+  # ---------------------------------------------------------------------------
+  # Erigon Archive Node - Sepolia [Binary Build]
+  # ---------------------------------------------------------------------------
+  # Erigon v3 archive node - --prune.mode=archive + --experimental.commitment-history
+  # applied automatically via group_vars/node_archive/ (node_type = "archive").
+  # Sepolia archive is smaller than mainnet (~500GB vs ~3TB).
+  #
+  # Playbook: ansible-playbook playbooks/erigon.yml --limit node_archive
+  # Upgrade:  Change erigon_version in group_vars/erigon/main.yml, re-run playbook
+  #
+  # erigon-arch = {
+  #   role                   = "erigon"        # Uses erigon playbook (binary, not Docker)
+  #   node_type              = "archive"       # Applies group_vars/node_archive/ overrides
+  #   execution_client       = "erigon"
+  #   consensus_client       = "caplin"        # Built-in CL (no separate beacon node)
+  #   instance_type          = "m7i.2xlarge"   # 8 vCPU, 32GB RAM (Sepolia needs less)
+  #   root_volume_size_gb    = 100
+  #   data_volume_size_gb    = 1000            # 1TB sufficient for Sepolia archive
+  #   data_volume_iops       = 6000
+  #   data_volume_throughput = 250
+  #   associate_eip          = true
+  #   domain                 = "erigon-arch.rpc.sepolia.example.com"
+  # }
+}

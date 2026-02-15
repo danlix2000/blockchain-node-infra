@@ -1,0 +1,151 @@
+# -----------------------------------------------------------------------------
+# Ethereum Nodes - Sepolia Testnet - Latitude.sh Bare Metal
+# -----------------------------------------------------------------------------
+# Single source of truth for all Sepolia nodes on Latitude.sh.
+# Copy to nodes.tfvars and customize for your deployment.
+#
+# Workflow:
+#   1. Order servers on Latitude.sh dashboard (select plan, site, OS - no RAID)
+#   2. Rename hostname in Latitude console to match naming convention
+#   3. Copy each server's ID (sv_xxx) from dashboard into latitude_id below
+#   4. terraform plan -var-file=nodes.tfvars   (verify import plan)
+#   5. terraform apply -var-file=nodes.tfvars  (import servers + create inventory)
+#
+# Deploying specific nodes (use -target):
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["full"]'
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["archive"]'
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["erigon-full"]'
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["erigon-arch"]'
+#
+# Configuring specific nodes (use --limit):
+#   ansible-playbook -i inventory/ethereum_sepolia_latitude_terraform_state.yml playbooks/ethereum.yml --limit node_full
+#   ansible-playbook -i inventory/ethereum_sepolia_latitude_terraform_state.yml playbooks/ethereum.yml --limit node_archive
+#   ansible-playbook -i inventory/ethereum_sepolia_latitude_terraform_state.yml playbooks/erigon.yml --limit node_full
+#   ansible-playbook -i inventory/ethereum_sepolia_latitude_terraform_state.yml playbooks/erigon.yml --limit node_archive
+#
+# Node naming: {site}-{chain}-{network}-{node_key}
+# Example: chi-ethereum-sepolia-full, chi-ethereum-sepolia-archive
+#
+# Deployment types:
+#   role = "ethereum" -> Docker-based (Ansible playbooks/ethereum.yml)
+#   role = "erigon"   -> Binary build (Ansible playbooks/erigon.yml)
+#
+# Client selection can be explicit per node, or inferred from node_type:
+#   - node_type = "full"    -> Geth + Prysm (defaults, Docker)
+#   - node_type = "archive" -> Reth + Lighthouse (defaults, Docker)
+#   - role = "erigon", node_type = "full"    -> Erigon full (binary, no Docker)
+#   - role = "erigon", node_type = "archive" -> Erigon archive (binary, no Docker)
+#
+# Latitude Plans:
+#   c2-small-x86      - Entry-level (testing)
+#   m4-metal-large     - 24 CPU, 384GB RAM, 10Gbps
+#   rs4-metal-large    - 64 CPU, 768GB RAM, 100Gbps (storage-optimized)
+#   rs4-metal-xlarge   - 96 CPU, 1536GB RAM, 200Gbps
+#   f4-metal-medium    - Compute-optimized
+#
+# Latitude Sites:
+#   CHI (Chicago), LAX2 (Los Angeles), TYO3/TYO4 (Tokyo)
+#   SAN3 (Santiago), SAO2 (Sao Paulo), SJC3 (San Jose)
+#
+# Data Device:
+#   /dev/md127    - RAID array created by Ansible (avoids conflict with Latitude md0/md1)
+#   /dev/nvme0n1  - First NVMe drive (no RAID)
+#   /dev/sda      - First SATA/SAS drive (no RAID)
+# -----------------------------------------------------------------------------
+
+nodes = {
+  # ---------------------------------------------------------------------------
+  # Full Node (Geth + Prysm) - Sepolia [Docker]
+  # ---------------------------------------------------------------------------
+  # Recommended for: RPC endpoints, general testnet use
+  # Sync time: ~1 day with snap sync
+  #
+  # Playbook: ansible-playbook playbooks/ethereum.yml --limit node_full
+  # Upgrade:  Change client versions in group_vars/ethereum/main.yml, re-run playbook
+  #
+  # full = {
+  #   role             = "ethereum"
+  #   node_type        = "full"
+  #   execution_client = "geth"
+  #   consensus_client = "prysm"
+  #
+  #   latitude_id    = "sv_xxxxxxxxxxxx"   # Server ID from Latitude.sh dashboard
+  #   latitude_label = "XXXXXXXXXX"        # Server label/serial from dashboard
+  #   plan           = "c2-small-x86"      # Sepolia needs less - entry-level works
+  #   site           = "CHI"
+  #   billing        = "monthly"
+  #   data_device    = "/dev/md127"        # RAID array device
+  # }
+
+  # ---------------------------------------------------------------------------
+  # Archive Node (Reth + Lighthouse) - Sepolia [Docker]
+  # ---------------------------------------------------------------------------
+  # Recommended for: Historical queries, trace APIs, beacon archive
+  # Lighthouse runs as supernode with --reconstruct-historic-states, --genesis-backfill,
+  # --prune-blobs=false, --prune-payloads=false (full beacon archive).
+  # Sync time: ~3-5 days
+  #
+  # Playbook: ansible-playbook playbooks/ethereum.yml --limit node_archive
+  # Upgrade:  Change client versions in group_vars/ethereum/main.yml, re-run playbook
+  #
+  # archive = {
+  #   role             = "ethereum"
+  #   node_type        = "archive"
+  #   execution_client = "reth"
+  #   consensus_client = "lighthouse"
+  #
+  #   latitude_id    = "sv_xxxxxxxxxxxx"   # Server ID from Latitude.sh dashboard
+  #   latitude_label = "XXXXXXXXXX"        # Server label/serial from dashboard
+  #   plan           = "m4-metal-large"    # Archive needs more resources
+  #   site           = "CHI"
+  #   billing        = "monthly"
+  #   data_device    = "/dev/md127"        # RAID array device
+  # }
+
+  # ---------------------------------------------------------------------------
+  # Erigon Full Node - Sepolia [Binary Build]
+  # ---------------------------------------------------------------------------
+  # Erigon v3 full node - native default mode (no --prune.mode flag).
+  # Sepolia full node needs less storage than archive (~200GB vs ~500GB).
+  #
+  # Playbook: ansible-playbook playbooks/erigon.yml --limit node_full
+  # Upgrade:  Change erigon_version in group_vars/erigon/main.yml, re-run playbook
+  #
+  # erigon-full = {
+  #   role             = "erigon"          # Uses erigon playbook (binary, not Docker)
+  #   node_type        = "full"            # Erigon default - no archive overrides applied
+  #   execution_client = "erigon"
+  #   consensus_client = "caplin"          # Built-in CL (no separate beacon node)
+  #
+  #   latitude_id    = "sv_xxxxxxxxxxxx"   # Server ID from Latitude.sh dashboard
+  #   latitude_label = "XXXXXXXXXX"        # Server label/serial from dashboard
+  #   plan           = "m4-metal-large"
+  #   site           = "CHI"
+  #   billing        = "monthly"
+  #   data_device    = "/dev/md127"        # RAID array device
+  # }
+
+  # ---------------------------------------------------------------------------
+  # Erigon Archive Node - Sepolia [Binary Build]
+  # ---------------------------------------------------------------------------
+  # Erigon v3 archive node - --prune.mode=archive + --experimental.commitment-history
+  # applied automatically via group_vars/node_archive/ (node_type = "archive").
+  # Sepolia archive is smaller than mainnet (~500GB vs ~3TB).
+  #
+  # Playbook: ansible-playbook playbooks/erigon.yml --limit node_archive
+  # Upgrade:  Change erigon_version in group_vars/erigon/main.yml, re-run playbook
+  #
+  # erigon-arch = {
+  #   role             = "erigon"          # Uses erigon playbook (binary, not Docker)
+  #   node_type        = "archive"         # Applies group_vars/node_archive/ overrides
+  #   execution_client = "erigon"
+  #   consensus_client = "caplin"          # Built-in CL (no separate beacon node)
+  #
+  #   latitude_id    = "sv_xxxxxxxxxxxx"   # Server ID from Latitude.sh dashboard
+  #   latitude_label = "XXXXXXXXXX"        # Server label/serial from dashboard
+  #   plan           = "m4-metal-large"
+  #   site           = "CHI"
+  #   billing        = "monthly"
+  #   data_device    = "/dev/md127"        # RAID array device
+  # }
+}

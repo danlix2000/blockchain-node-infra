@@ -1,0 +1,38 @@
+---
+# =============================================================================
+# HAProxy Role - Configuration Tasks
+# =============================================================================
+
+- name: Create API keys directory
+  ansible.builtin.file:
+    path: "{{ haproxy_api_keys_dir }}"
+    state: directory
+    owner: haproxy
+    group: haproxy
+    mode: "0755"
+
+- name: Deploy API key file
+  ansible.builtin.copy:
+    content: "{{ haproxy_api_key }}\n"
+    dest: "{{ haproxy_api_keys_dir }}/{{ haproxy_api_keys_file }}"
+    owner: haproxy
+    group: haproxy
+    mode: "0640"
+  when: haproxy_api_key | default('') != ''
+  notify: Reload haproxy
+
+- name: Deploy HAProxy configuration
+  ansible.builtin.template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    owner: root
+    group: root
+    mode: "0644"
+    validate: haproxy -c -f %s
+  notify: Reload haproxy
+
+- name: Enable and start HAProxy service
+  ansible.builtin.systemd:
+    name: haproxy
+    enabled: true
+    state: started

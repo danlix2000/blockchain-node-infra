@@ -1,0 +1,25 @@
+---
+# =============================================================================
+# Latitude.sh Bare Metal Platform Configuration
+# =============================================================================
+# Applies to all hosts in the "platform_latitude" inventory group.
+# Overrides values from group_vars/all/ for Latitude-specific settings.
+#
+# Secrets: Create vault.yml in this directory using ansible-vault create.
+# Required vault variables (Latitude BM only):
+#   vault_haproxy_certbot_aws_access_key  - IAM user access key (Route 53 permissions)
+#   vault_haproxy_certbot_aws_secret_key  - IAM user secret key
+# =============================================================================
+
+# SSH user for Latitude.sh Ubuntu 24.04 bare metal servers
+ansible_user: ubuntu
+
+# Bare metal has no cloud firewall - enable UFW host firewall
+# (AWS uses Security Groups, so firewall is disabled by default)
+erigon_firewall_enabled: true
+haproxy_firewall_enabled: true
+
+# Certbot Route 53 credentials (BM has no IAM instance profile)
+# Referenced from vault.yml (encrypted). Create with: ansible-vault create vault.yml
+haproxy_certbot_aws_access_key: "{{ vault_haproxy_certbot_aws_access_key | default('') }}"
+haproxy_certbot_aws_secret_key: "{{ vault_haproxy_certbot_aws_secret_key | default('') }}"

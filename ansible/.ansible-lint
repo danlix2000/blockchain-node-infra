@@ -1,0 +1,18 @@
+---
+# =============================================================================
+# Ansible Lint Configuration
+# =============================================================================
+
+# Skip rules that conflict with our architecture:
+# - var-naming[no-role-prefix]: We intentionally use shared variables (service_user,
+#   node_type, external_ip, etc.) across roles via group_vars. Prefixing every
+#   variable with the role name would break this cross-role variable sharing design.
+# - command-instead-of-module: Some mount/disk checks intentionally use shell
+#   for flexibility that the mount module doesn't provide.
+skip_list:
+  - var-naming[no-role-prefix]
+  - command-instead-of-module
+
+# Exclude vendored collections from linting
+exclude_paths:
+  - collections/

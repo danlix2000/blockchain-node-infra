@@ -1,0 +1,33 @@
+---
+# -----------------------------------------------------------------------------
+# RAID-0 Setup Playbook
+# -----------------------------------------------------------------------------
+# Auto-discovers available data disks and creates a RAID-0 array.
+# Run this BEFORE the main ethereum playbook on bare metal servers.
+#
+# Usage:
+#   # Setup RAID on all Latitude BM nodes
+#   ansible-playbook -i inventory/ethereum_mainnet_latitude_terraform_state.yml playbooks/raid.yml
+#
+#   # Setup RAID on specific node
+#   ansible-playbook -i inventory/ethereum_mainnet_latitude_terraform_state.yml playbooks/raid.yml --limit node_full
+#
+# After RAID setup, run the main playbook:
+#   ansible-playbook -i inventory/ethereum_mainnet_latitude_terraform_state.yml playbooks/ethereum.yml
+# -----------------------------------------------------------------------------
+
+- name: Setup RAID-0 on bare metal servers
+  hosts: all
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Display RAID setup info
+      ansible.builtin.debug:
+        msg: |
+          Setting up RAID-0 on {{ inventory_hostname }}
+          Target device: {{ raid_device | default('/dev/md0') }}
+          Mount point: {{ raid_mount_point | default('/data') }}
+
+  roles:
+    - role: raid

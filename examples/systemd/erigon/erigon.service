@@ -1,0 +1,77 @@
+# =============================================================================
+# Erigon Ethereum Node - Systemd Service (Reference)
+# =============================================================================
+# Erigon v3 runs as a native binary with built-in Caplin consensus client.
+# No Docker required - just build from source with `make erigon`.
+#
+# Build:          git clone --branch v3.3.7 --single-branch https://github.com/erigontech/erigon.git /opt/erigon
+#                 cd /opt/erigon && make erigon
+# Binary:         /opt/erigon/build/bin/erigon
+# Data directory: /data/erigon
+# Service user:   ethereum (UID 2000)
+#
+# Production deployments use Ansible (ansible/roles/erigon/).
+# This file is a standalone reference.
+# =============================================================================
+
+[Unit]
+Description=Erigon Ethereum Node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ethereum
+Group=ethereum
+Type=simple
+Restart=always
+RestartSec=10
+TimeoutStopSec=300
+LimitNOFILE=65536
+
+# libsilkworm_capi.so is in build/bin/ alongside the binary
+Environment=LD_LIBRARY_PATH=/opt/erigon/build/bin
+
+ExecStart=/opt/erigon/build/bin/erigon \
+  --chain=mainnet \
+  --datadir=/data/erigon \
+  # ── Full mode (default) ──────────────────────────────────────────────
+  # No --prune.mode flag = full node (Erigon default)
+  # For archive: uncomment the next two lines
+  # --prune.mode=archive \
+  # --experimental.commitment-history \
+  # ── Caplin (built-in consensus client) ───────────────────────────────
+  --caplin.discovery.addr=0.0.0.0 \
+  --caplin.discovery.port=4000 \
+  --caplin.discovery.tcpport=4001 \
+  --caplin.max-peer-count=75 \
+  # ── HTTP RPC ─────────────────────────────────────────────────────────
+  --http \
+  --http.addr=0.0.0.0 \
+  --http.port=8545 \
+  --http.api=eth,debug,net,trace,web3,erigon,engine,txpool,ots \
+  --http.compression \
+  # ── WebSocket ────────────────────────────────────────────────────────
+  --ws \
+  --ws.compression \
+  # ── RPC Tuning ───────────────────────────────────────────────────────
+  --rpc.batch.concurrency=100 \
+  --rpc.batch.limit=200 \
+  --rpc.gascap=100000000 \
+  --trace.maxtraces=10000 \
+  # ── Engine API (for external CL, if --externalcl) ───────────────────
+  --authrpc.port=8551 \
+  --authrpc.addr=127.0.0.1 \
+  --authrpc.vhosts=localhost \
+  --authrpc.jwtsecret=/data/erigon/jwt.hex \
+  # ── P2P & Torrent ───────────────────────────────────────────────────
+  --port=30303 \
+  --torrent.download.rate=2000mb \
+  --torrent.port=42069 \
+  # ── Metrics ──────────────────────────────────────────────────────────
+  --metrics \
+  --metrics.port=6060 \
+  # ── Logging ──────────────────────────────────────────────────────────
+  --log.console.verbosity=info
+
+[Install]
+WantedBy=multi-user.target

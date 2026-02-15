@@ -1,0 +1,137 @@
+# -----------------------------------------------------------------------------
+# Ethereum Nodes - Production (Mainnet)
+# -----------------------------------------------------------------------------
+# Single source of truth for all Mainnet nodes in this environment.
+# Copy to nodes.tfvars and customize for your deployment.
+#
+# Usage:
+#   terraform plan -var-file=nodes.tfvars
+#   terraform apply -var-file=nodes.tfvars
+#
+# Deploying specific nodes (use -target):
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["full"]'
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["archive"]'
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["erigon-full"]'
+#   terraform apply -var-file=nodes.tfvars -target='module.compute["erigon-arch"]'
+#
+# Configuring specific nodes (use --limit):
+#   ansible-playbook -i ansible/inventory/ethereum_mainnet_aws_terraform_state.yml playbooks/ethereum.yml --limit node_full
+#   ansible-playbook -i ansible/inventory/ethereum_mainnet_aws_terraform_state.yml playbooks/ethereum.yml --limit node_archive
+#   ansible-playbook -i ansible/inventory/ethereum_mainnet_aws_terraform_state.yml playbooks/erigon.yml --limit node_full
+#   ansible-playbook -i ansible/inventory/ethereum_mainnet_aws_terraform_state.yml playbooks/erigon.yml --limit node_archive
+#
+# Node naming: {region}-{chain}-{network}-{node_key}
+# Example: us-east-1-ethereum-mainnet-full
+#
+# Deployment types:
+#   role = "ethereum" -> Docker-based (Ansible playbooks/ethereum.yml)
+#   role = "erigon"   -> Binary build (Ansible playbooks/erigon.yml)
+#
+# Client selection can be explicit per node, or inferred from node_type:
+#   - node_type = "full"    -> Geth + Prysm (defaults, Docker)
+#   - node_type = "archive" -> Reth + Lighthouse (defaults, Docker)
+#   - role = "erigon", node_type = "full"    -> Erigon full (binary, no Docker)
+#   - role = "erigon", node_type = "archive" -> Erigon archive (binary, no Docker)
+#
+# For Sepolia testnet: Copy this directory to terraform/stacks/aws/ethereum/sepolia/
+# and set network = "sepolia" in terraform.tfvars
+# -----------------------------------------------------------------------------
+
+nodes = {
+  # ---------------------------------------------------------------------------
+  # Full Node (Geth + Prysm) - Mainnet [Docker]
+  # ---------------------------------------------------------------------------
+  # Recommended for: RPC endpoints, general use
+  # Sync time: ~2 days with snap sync
+  #
+  # Playbook: ansible-playbook playbooks/ethereum.yml --limit node_full
+  # Upgrade:  Change client versions in group_vars/ethereum/main.yml, re-run playbook
+  #
+  full = {
+    role                   = "ethereum"
+    node_type              = "full"
+    execution_client       = "geth"
+    consensus_client       = "prysm"
+
+    instance_type          = "m7i.2xlarge" # 8 vCPU, 32GB RAM
+    root_volume_size_gb    = 100
+    data_volume_size_gb    = 2000 # 2TB for full node
+    data_volume_iops       = 6000
+    data_volume_throughput = 250
+    associate_eip          = true
+    # domain               = "full.rpc.eth.example.com"  # Route 53 A record (requires route53_zone_id)
+  }
+
+  # ---------------------------------------------------------------------------
+  # Archive Node (Reth + Lighthouse) - Mainnet [Docker]
+  # ---------------------------------------------------------------------------
+  # Recommended for: Historical queries, trace APIs, block explorers
+  # Sync time: ~7-14 days
+  #
+  # Playbook: ansible-playbook playbooks/ethereum.yml --limit node_archive
+  # Upgrade:  Change client versions in group_vars/ethereum/main.yml, re-run playbook
+  #
+  # archive = {
+  #   role                   = "ethereum"
+  #   node_type              = "archive"
+  #   execution_client       = "reth"
+  #   consensus_client       = "lighthouse"
+  #   instance_type          = "m7i.4xlarge" # 16 vCPU, 64GB RAM
+  #   root_volume_size_gb    = 100
+  #   data_volume_size_gb    = 5000 # 5TB for archive data
+  #   data_volume_iops       = 10000
+  #   data_volume_throughput = 500
+  #   associate_eip          = true
+  #   domain                 = "archive.rpc.eth.example.com"
+  # }
+
+  # ---------------------------------------------------------------------------
+  # Erigon Full Node - Mainnet [Binary Build]
+  # ---------------------------------------------------------------------------
+  # Erigon v3 full node - native default mode (no --prune.mode flag).
+  # Lower storage than archive. No --experimental.commitment-history.
+  # Recommended for: General RPC, lower storage requirements
+  # Sync time: ~2-3 days
+  #
+  # Playbook: ansible-playbook playbooks/erigon.yml --limit node_full
+  # Upgrade:  Change erigon_version in group_vars/erigon/main.yml, re-run playbook
+  #
+  # erigon-full = {
+  #   role                   = "erigon"     # Uses erigon playbook (binary, not Docker)
+  #   node_type              = "full"       # Erigon default - no archive overrides applied
+  #   execution_client       = "erigon"
+  #   consensus_client       = "caplin"     # Built-in CL (no separate beacon node)
+  #   instance_type          = "m7i.2xlarge" # 8 vCPU, 32GB RAM
+  #   root_volume_size_gb    = 100
+  #   data_volume_size_gb    = 2000          # 2TB for full node
+  #   data_volume_iops       = 6000
+  #   data_volume_throughput = 250
+  #   associate_eip          = true
+  #   domain                 = "erigon-full.rpc.eth.example.com"
+  # }
+
+  # ---------------------------------------------------------------------------
+  # Erigon Archive Node - Mainnet [Binary Build]
+  # ---------------------------------------------------------------------------
+  # Erigon v3 archive node - --prune.mode=archive + --experimental.commitment-history
+  # applied automatically via group_vars/node_archive/ (node_type = "archive").
+  # Recommended for: Historical queries, trace APIs, high-performance RPC
+  # Sync time: ~7-14 days (uses BitTorrent for initial sync)
+  #
+  # Playbook: ansible-playbook playbooks/erigon.yml --limit node_archive
+  # Upgrade:  Change erigon_version in group_vars/erigon/main.yml, re-run playbook
+  #
+  # erigon-arch = {
+  #   role                   = "erigon"     # Uses erigon playbook (binary, not Docker)
+  #   node_type              = "archive"    # Applies group_vars/node_archive/ overrides
+  #   execution_client       = "erigon"
+  #   consensus_client       = "caplin"     # Built-in CL (no separate beacon node)
+  #   instance_type          = "m7i.4xlarge" # 16 vCPU, 64GB RAM
+  #   root_volume_size_gb    = 100
+  #   data_volume_size_gb    = 3000          # Erigon is more space-efficient
+  #   data_volume_iops       = 10000
+  #   data_volume_throughput = 500
+  #   associate_eip          = true
+  #   domain                 = "erigon-arch.rpc.eth.example.com"
+  # }
+}

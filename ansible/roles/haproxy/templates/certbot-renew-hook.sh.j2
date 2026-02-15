@@ -1,0 +1,20 @@
+#!/bin/bash
+# =============================================================================
+# Certbot Renewal Deploy Hook for HAProxy
+# =============================================================================
+# Managed by Ansible - do not edit manually.
+#
+# Called automatically by certbot after successful certificate renewal.
+# Rebuilds the combined PEM bundle and reloads HAProxy.
+# =============================================================================
+
+DOMAIN="{{ haproxy_domain }}"
+CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
+PEM_DEST="{{ haproxy_ssl_cert_path }}"
+
+# Combine fullchain + private key into HAProxy PEM bundle
+cat "${CERT_DIR}/fullchain.pem" "${CERT_DIR}/privkey.pem" > "${PEM_DEST}"
+chmod 600 "${PEM_DEST}"
+
+# Reload HAProxy to pick up the new certificate
+systemctl reload haproxy
